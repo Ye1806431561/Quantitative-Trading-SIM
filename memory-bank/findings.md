@@ -18,9 +18,9 @@
     - Python implementation
 -->
 <!-- Captured from user request -->
-- 阅读 `memory-bank/` 全部文档后，执行 `implementation-plan.md` 的第 3 步（Phase 0 第 3 条）。
-- 第 3 步内容为目录与占位文件落地：按技术栈推荐结构创建目录树与占位文件（不写代码）。
-- 在用户验证“通过”前，不进入第 4 步。
+- 阅读 `memory-bank/` 全部文档后，执行 `implementation-plan.md` 的第 4 步（Phase 0 第 4 条）。
+- 第 4 步内容：写入依赖清单，锁定指定版本并保存于 `requirements.txt`；依赖需与 `memory-bank/tech-stack.md` 完全一致，Python 基线 3.10+。
+- 在用户验证“通过”前，不进入第 5 步。
 - 用户验证通过后，联动更新：
   - `memory-bank/progress.md`
   - `memory-bank/architecture.md`
@@ -38,10 +38,10 @@
     - Standard pattern: python script.py <command> [args]
 -->
 <!-- Key discoveries during exploration -->
-- 当前仓库在执行第 3 步前仅有 `memory-bank/` 文档，无 `src/`、`config/`、`tests/` 等工程目录。
-- 已按 `tech-stack.md` 推荐结构创建目录与占位文件，并完成逐项比对。
-- 用户已回复“通过”，第 3 步验收闸门已满足，可执行验收后文档联动更新。
-- 第 4 步（依赖清单落地）尚未开始，保持流程边界。
+- 技术栈依赖清单（含版本号）已在 `memory-bank/tech-stack.md` 明确，可直接作为 `requirements.txt` 写入基线。
+- `requirements.txt` 之前为空；写入后需与技术栈逐项比对，确保无缺项、无新增依赖。
+- Python 基线为 3.10+，需要在依赖文件中显式标注。
+- 用户已确认第 4 步测试/验收“通过”，可以执行文档联动更新；第 5 步仍需等待。
 
 ## Technical Decisions
 <!-- 
@@ -55,11 +55,11 @@
 <!-- Decisions made with rationale -->
 | Decision | Rationale |
 |----------|-----------|
-| 将“实施计划第3步”解释为 Phase 0 第 3 条（目录与占位文件） | 与实施计划顺序一致，避免提前进入第 4 步依赖落地 |
-| 第 3 步只创建结构和占位文件，不写业务实现 | 严格符合“目录与占位文件（不含代码）”约束 |
-| 使用 `tech-stack.md` 作为目录与命名唯一对照基线 | 保证结构一致性，减少后续重命名与迁移成本 |
-| 在用户“通过”前停止推进第 4 步 | 保证流程受控，避免越界执行 |
-| 验收通过后同步更新四份 memory-bank 文档 | 维持执行记录、架构认知、决策依据、需求追踪的同步一致 |
+| 将“实施计划第4步”解释为 Phase 0 第 4 条（依赖锁定） | 与实施计划顺序一致，避免越界到配置模板（第 5 步） |
+| 依赖列表严格取自 `memory-bank/tech-stack.md`，不新增其他库 | 保证技术栈一致性，减少后续兼容性与审计成本 |
+| 显式标注 Python 基线 3.10+ | 提前锁定运行时约束，避免低版本兼容问题 |
+| 在用户“通过”前不开始第 5 步 | 遵守闸门控制，避免配置实现提前落地 |
+| 验收通过后同步更新四份 memory-bank 文档 | 保持知识、进度、架构、追踪清单一致 |
 
 ## Issues Encountered
 <!-- 
@@ -72,9 +72,9 @@
 <!-- Errors and how they were resolved -->
 | Issue | Resolution |
 |-------|------------|
-| 第 3 步要求“创建文件但不写代码”，边界容易被误触 | 仅创建空占位文件和目录，不填充业务逻辑 |
-| 需要确保结构与技术栈文档逐项一致 | 创建后立刻做目录树核对与命名检查 |
-| 用户负责测试且设置第 4 步闸门 | 在收到“通过”前不更新第 4 步相关状态，收到“通过”后再做文档联动 |
+| 依赖锁定需与技术栈完全一致，防止遗漏或新增 | 逐项对照 `tech-stack.md`，写入后再次核对列表 |
+| Python 版本基线需显式标注 | 在 `requirements.txt` 顶部注明 Python 3.10+ |
+| 必须等待用户验证后再做文档联动 | 用户确认“通过”后再更新四份文档，保持流程受控 |
 
 ## Resources
 <!-- 

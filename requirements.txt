@@ -1,0 +1,25 @@
+# Python baseline: 3.10+
+
+# Core trading
+ccxt==4.2.0
+backtrader==1.9.78.123
+
+# Data processing
+pandas==2.1.0
+numpy==1.26.0
+
+# Configuration
+pyyaml==6.0.1
+python-dotenv==1.0.0
+
+# Logging and CLI
+loguru==0.7.2
+rich==13.7.0
+
+# Visualization
+matplotlib==3.8.0
+
+# Development tools (optional)
+pytest==7.4.3
+pytest-asyncio==0.21.1
+black==23.12.0
