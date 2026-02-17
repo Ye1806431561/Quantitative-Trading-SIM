@@ -250,3 +250,86 @@
 ### 交接备注
 - 数据层已具备基础连接生命周期与事务边界，可作为第 9 步建表与索引实现的底座。
 - 下一步进入第 9 步时，应仅落地 `accounts`、`orders`、`trades`、`strategy_runs`、`positions`、`candles` 六表及其约束/索引，不跨步实现第 10 步。
+
+## 2026-02-17（第 9 步）
+
+### 本次目标
+- 执行 `implementation-plan.md` Phase 1 第 9 条：定义并审核表结构（`accounts`、`orders`、`trades`、`strategy_runs`、`positions`、`candles`），确保字段与需求一致。
+
+### 已完成事项
+- 完整阅读并复核 `memory-bank/` 全部文档，确认第 9 步边界与验收口径（含 `CLAUDE.md` 行 387–520）。
+- 在 `src/core/database.py` 实现第 9 步建表与建索引能力：
+  - 新增六张核心表的 `CREATE TABLE IF NOT EXISTS` 语句。
+  - 新增 `positions` 约束与索引：`UNIQUE(symbol)`、`CHECK(amount >= 0)`、`idx_positions_symbol`。
+  - 新增 `candles` 约束与索引：`UNIQUE(symbol, timeframe, timestamp)`、`idx_candles_symbol_time`、`idx_candles_timestamp`。
+  - 新增 `initialize_schema()`，在事务内统一执行建表与建索引。
+- 扩展 `tests/test_database.py` 以固化第 9 步验收：
+  - 校验六张表存在与字段完整性。
+  - 校验 `trades.order_id -> orders.id` 外键存在并生效。
+  - 校验 `positions` 的 `UNIQUE/CHECK` 生效。
+  - 校验 `candles` 复合 `UNIQUE` 生效。
+- 完成验证：
+  - 使用 `PYTHONPATH=. ./.venv/bin/pytest -q tests/test_database.py`，结果 `11 passed`。
+  - 通过 SQLite `sqlite_master` 元数据抽查，确认三条索引与六张表 SQL 落地。
+- 你已确认第 9 步“通过”（2026-02-17）。
+
+### 验收状态
+- Phase 1 第 9 条已验证通过。
+- 按你的约束未开始第 10 步（领域模型与校验规则）。
+
+### 交接备注
+- 数据层已完成“生命周期 + 核心表结构”基线，可进入第 10 步的模型与规则定义。
+- 第 10 步开始前应保持范围边界，仅新增领域模型与校验，不提前实现账户/订单业务流程。
+
+## 2026-02-17（第 10 步）
+
+### 本次目标
+- 执行 `implementation-plan.md` Phase 1 第 10 条：定义领域模型与校验规则（必填、数值范围、状态枚举），形成可复用的模型层。
+
+### 已完成事项
+- 完整阅读并复核 `memory-bank/` 全部文档，确认第 10 步边界与验收口径。
+- 实现领域模型与校验规则（分文件，避免大文件）：
+  - `src/core/enums.py`：订单类型/方向/状态、交易方向、策略运行状态枚举。
+  - `src/core/validation.py`：通用校验函数与 `DomainValidationError`。
+  - 领域模型（含 `validate` 类方法）：`account.py`、`order.py`、`trade.py`、`position.py`、`candle.py`、`strategy_run.py`。
+  - 规则覆盖：必填校验、正数/非负数、比例(0,1]、价格高低开收关系、时间戳非负与先后约束、订单 filled 不超 amount、非市价单必须给 price、K 线 timeframe 白名单复用配置。
+- 新增自动化测试 `tests/test_models.py`，覆盖 14 项正反例；全量测试 `PYTHONPATH=. ./.venv/bin/pytest -q` 通过（33 passed）。
+
+### 验收状态
+- Phase 1 第 10 条已完成且本地测试通过。
+- 按约定未开始第 11 步（账户初始化与余额管理）。
+
+### 交接备注
+- 第 11 步可直接使用已校验的模型与枚举，避免魔法字符串与重复校验逻辑。
+- 如需扩展字段或新枚举，请同步更新 `validation.py` 与对应模型测试。
+
+## 2026-02-17（第 11 步验证与 Bug 修复）
+
+### 本次目标
+- 验证第 11 步（账户初始化与余额管理）的完成状况。
+- 修复验证过程中发现的测试失败。
+
+### 已完成事项
+- 确认 `src/core/account_service.py`（232 行）已实现第 11 步核心功能：
+  - `AccountService`：账户生命周期管理（初始化、查询、余额变更）。
+  - `initialize_accounts()`：幂等创建账户行。
+  - `freeze_funds()` / `release_funds()`：可用/冻结资金互转。
+  - `deposit()` / `consume_available()` / `add_to_available()`：余额增减。
+  - `load_positions()`：从 `positions` 表恢复持仓状态。
+  - `compute_total_assets()`：多币种总资产估值（现金 + 持仓市值）。
+  - `from_config()`：从配置初始化服务。
+- 确认 `tests/test_account.py` 包含 5 项验收测试。
+- 运行测试发现 2 项失败（`test_compute_total_assets_uses_positions`、`test_compute_total_assets_requires_price_when_missing_current_price`）。
+- 定位根因：`src/core/validation.py` 的 `require_timestamp()` 仅接受 `int/float`，但 `database.py` 使用 `detect_types=sqlite3.PARSE_DECLTYPES` 导致 `TIMESTAMP` 列自动解析为 `datetime.datetime` 对象。
+- 修复 `src/core/validation.py` 中的 `require_timestamp()`，新增：
+  - `datetime.datetime` 对象支持（SQLite `PARSE_DECLTYPES` 产生）。
+  - ISO 格式字符串支持（降级兼容）。
+- 修复后全量测试通过：`38 passed`（含 `test_account` 5 项、`test_models` 14 项、`test_database` 11 项、`test_config` 5 项、`test_logger` 3 项）。
+
+### 验收状态
+- 第 11 步代码与测试实现已存在，Bug 已修复，全量测试通过。
+- 第 11 步尚未正式标记为"验证通过"，等待用户确认。
+
+### 交接备注
+- `require_timestamp()` 现兼容三种时间戳来源：数值、`datetime` 对象、ISO 字符串。后续新增时间戳字段时无需额外适配。
+- 3 条 `DeprecationWarning`（Python 3.12 弃用旧版 timestamp converter）为已知问题，不影响功能。

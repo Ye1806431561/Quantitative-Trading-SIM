@@ -18,14 +18,10 @@
     - Python implementation
 -->
 <!-- Captured from user request -->
-- 阅读 `memory-bank/` 全部文档后，执行 `implementation-plan.md` 的第 8 步（Phase 1 第 8 条）。
-- 第 8 步内容：设计数据库连接生命周期（打开、关闭、事务），路径取自配置。
-- 用户负责跑测试；在用户验证“通过”前，不进入第 9 步。
-- 用户验证通过后，联动更新：
-  - `memory-bank/progress.md`
-  - `memory-bank/architecture.md`
-  - `memory-bank/findings.md`
-  - `memory-bank/requirements-traceability-checklist.md`
+- 阅读 `memory-bank/` 全部文档后，执行 `implementation-plan.md` 第 10 步（定义领域模型与校验规则）。
+- 第 10 步内容：为账户、订单、交易、持仓、K 线、策略运行记录建立领域模型与校验规则，覆盖必填、数值范围、枚举状态、时间戳关系。
+- 未获得验证通过前，不进入第 11 步。
+- 验证通过后，需要联动更新 memory-bank 文档（`progress.md`、`architecture.md`、`findings.md`、`requirements-traceability-checklist.md`、`task.md`）。
 
 ## Research Findings
 <!-- 
@@ -38,11 +34,12 @@
     - Standard pattern: python script.py <command> [args]
 -->
 <!-- Key discoveries during exploration -->
-- 第 8 步边界是“数据库生命周期管理 + 验收验证”，不应提前进入第 9 步表结构定义。
-- `system.database_path` 已在默认配置与校验规则中存在，可直接作为数据库连接路径来源。
-- `src/core/database.py` 为空占位，需新增统一生命周期管理器承接 `open/close/transaction`。
-- 第 8 步验收需可演练“打开/提交/回滚/关闭”全流程，适合通过独立测试文件固化。
-- 用户已确认第 8 步验收“通过”（2026-02-17），可更新四份 memory-bank 文档并保持第 9 步未开始状态。
+- 领域模型拆分为独立文件符合 CLAUDE 反对大文件的规则：`account.py`、`order.py`、`trade.py`、`position.py`、`candle.py`、`strategy_run.py`，并集中枚举于 `enums.py`，通用校验于 `validation.py`。
+- 校验规则覆盖：必填字段、正数/非负数、比例区间(0,1]、价格上下界、K 线 high/low/open/close 关系、时间戳非负与先后关系、订单 filled 不得超 amount、非市价单必须给 price。
+- 复用 `ALLOWED_TIMEFRAMES` 确保 candle 校验与配置白名单一致；状态枚举与表结构字段对应，避免魔法字符串。
+- 新增 `tests/test_models.py` 覆盖正反例 14 项；全量测试 `33 passed` 使用 `PYTHONPATH=. ./.venv/bin/pytest -q`（2026-02-17）。
+- Step 10 验收通过后仍需保持“未开始第 11 步”边界。
+- **Step 11 验证发现（2026-02-17）**：`database.py` 使用 `detect_types=sqlite3.PARSE_DECLTYPES` 打开连接，导致 `TIMESTAMP DEFAULT CURRENT_TIMESTAMP` 列被自动解析为 `datetime.datetime` 对象而非字符串或数值。`require_timestamp()` 原先仅接受 `int/float`，引发 `DomainValidationError`。修复后 `require_timestamp()` 兼容数值、`datetime` 对象和 ISO 格式字符串三种来源，全量测试 38 passed。
 
 ## Technical Decisions
 <!-- 
@@ -56,13 +53,11 @@
 <!-- Decisions made with rationale -->
 | Decision | Rationale |
 |----------|-----------|
-| 将本轮目标限定为“实施计划第8步（数据库连接生命周期）” | 遵守实施计划顺序，不越界到第 9 步表结构实现 |
-| 数据库管理器统一提供 `open/close/transaction` | 把连接与事务边界集中到单一入口，降低资源泄露与事务不一致风险 |
-| 从 `system.database_path` 构建数据库连接 | 复用既有配置体系，避免硬编码路径 |
-| 使用事务上下文自动 `commit/rollback` | 明确成功与异常分支的持久化行为，满足第 8 步验收口径 |
-| 通过 `tests/test_database.py` 固化第 8 步自动化验收 | 将“打开/提交/回滚/关闭”流程固化为可回归测试 |
-| 在用户“通过”前不开始第 9 步 | 遵守闸门控制，避免提前推进表结构实现 |
-| 验收通过后同步更新四份 memory-bank 文档 | 保持知识、进度、架构、追踪清单一致 |
+| 领域模型分文件 + 枚举集中在 `enums.py` | 遵守 CLAUDE 拆分规则，避免大文件与魔法字符串 |
+| 共用 `validation.py` 做输入校验 | 复用通用校验函数，减少重复逻辑并统一错误信息 |
+| 校验规则与数据库约束保持一致 | 避免应用层与存储层不一致导致的脏数据 |
+| K 线校验复用 `ALLOWED_TIMEFRAMES` | 与配置白名单统一，避免时间周期漂移 |
+| 优先补充反例测试（边界/非法状态/顺序） | 确保第 10 步验收覆盖负路径，防止静默坏数据进入后续流程 |
 
 ## Issues Encountered
 <!-- 
@@ -75,10 +70,10 @@
 <!-- Errors and how they were resolved -->
 | Issue | Resolution |
 |-------|------------|
-| 第 8 步与第 9 步边界容易混淆 | 本轮只落地生命周期管理与测试，明确第 9 步尚未开始 |
-| 本地运行 `pytest` 时全局命令不可用 | 切换到 `.venv/bin/pytest` 并设置 `PYTHONPATH=.` 完成自检 |
-| 测试环境导入路径报错（`ModuleNotFoundError: src`） | 在执行测试命令时显式注入 `PYTHONPATH=.` |
-| 必须等待用户验证后再做文档联动 | 用户确认“通过”后再更新四份文档，保持流程受控 |
+| 状态/类型字符串易出错 | 引入枚举，校验层仅接受枚举值 |
+| 时间戳/价格范围漏检风险 | 校验函数显式验证非负/区间和 high-low-open-close 关系 |
+| 反例不足导致验收覆盖不全 | 新增反例测试（价格缺失、filled 超量、drawdown>1、end<start 等） |
+| `require_timestamp()` 不兼容 SQLite `datetime` 对象 | `database.py` 启用 `PARSE_DECLTYPES`，`TIMESTAMP` 列被解析为 `datetime.datetime` 而非字符串/数值。修复 `require_timestamp()` 新增 `datetime` 对象与 ISO 字符串支持，全量测试 38 passed |
 
 ## Resources
 <!-- 
@@ -99,14 +94,19 @@
 - `memory-bank/architecture.md`
 - `memory-bank/findings.md`
 - `config/config.yaml`
-- `config/strategies.yaml`
-- `config/.env.example`
-- `src/utils/config.py`
 - `src/utils/config_defaults.py`
 - `src/utils/config_validation.py`
 - `tests/test_config.py`
-- `src/core/database.py`
-- `tests/test_database.py`
+- `src/core/enums.py`
+- `src/core/validation.py`
+- `src/core/account.py`
+- `src/core/order.py`
+- `src/core/trade.py`
+- `src/core/position.py`
+- `src/core/candle.py`
+- `src/core/strategy_run.py`
+- `tests/test_models.py`
+- `memory-bank/task.md`
 
 ## Visual/Browser Findings
 <!-- 

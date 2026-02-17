@@ -8,6 +8,96 @@ from contextlib import contextmanager
 from pathlib import Path
 from typing import Any
 
+SCHEMA_STATEMENTS: tuple[str, ...] = (
+    """
+    CREATE TABLE IF NOT EXISTS accounts (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        currency TEXT NOT NULL,
+        balance REAL NOT NULL,
+        available REAL NOT NULL,
+        frozen REAL NOT NULL DEFAULT 0,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    );
+    """,
+    """
+    CREATE TABLE IF NOT EXISTS orders (
+        id TEXT PRIMARY KEY,
+        symbol TEXT NOT NULL,
+        type TEXT NOT NULL,
+        side TEXT NOT NULL,
+        price REAL,
+        amount REAL NOT NULL,
+        filled REAL DEFAULT 0,
+        status TEXT NOT NULL,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    );
+    """,
+    """
+    CREATE TABLE IF NOT EXISTS trades (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        order_id TEXT NOT NULL,
+        symbol TEXT NOT NULL,
+        side TEXT NOT NULL,
+        price REAL NOT NULL,
+        amount REAL NOT NULL,
+        fee REAL NOT NULL,
+        timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (order_id) REFERENCES orders(id)
+    );
+    """,
+    """
+    CREATE TABLE IF NOT EXISTS strategy_runs (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        strategy_name TEXT NOT NULL,
+        symbol TEXT NOT NULL,
+        start_time TIMESTAMP,
+        end_time TIMESTAMP,
+        initial_capital REAL,
+        final_capital REAL,
+        total_return REAL,
+        max_drawdown REAL,
+        sharpe_ratio REAL,
+        status TEXT NOT NULL
+    );
+    """,
+    """
+    CREATE TABLE IF NOT EXISTS positions (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        symbol TEXT NOT NULL UNIQUE,
+        amount REAL NOT NULL,
+        entry_price REAL NOT NULL,
+        current_price REAL,
+        unrealized_pnl REAL,
+        realized_pnl REAL DEFAULT 0,
+        opened_at TIMESTAMP,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        CHECK(amount >= 0)
+    );
+    """,
+    """
+    CREATE TABLE IF NOT EXISTS candles (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        symbol TEXT NOT NULL,
+        timeframe TEXT NOT NULL,
+        timestamp INTEGER NOT NULL,
+        open REAL NOT NULL,
+        high REAL NOT NULL,
+        low REAL NOT NULL,
+        close REAL NOT NULL,
+        volume REAL NOT NULL,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        UNIQUE(symbol, timeframe, timestamp)
+    );
+    """,
+)
+
+INDEX_STATEMENTS: tuple[str, ...] = (
+    "CREATE INDEX IF NOT EXISTS idx_positions_symbol ON positions(symbol);",
+    "CREATE INDEX IF NOT EXISTS idx_candles_symbol_time ON candles(symbol, timeframe, timestamp);",
+    "CREATE INDEX IF NOT EXISTS idx_candles_timestamp ON candles(timestamp);",
+)
+
 
 class DatabaseLifecycleError(RuntimeError):
     """Raised when database lifecycle operations are invalid."""
@@ -86,6 +176,14 @@ class SQLiteDatabase:
         self._connection.close()
         self._connection = None
         self._transaction_depth = 0
+
+    def initialize_schema(self) -> None:
+        """Create required runtime tables, constraints, and indexes."""
+        with self.transaction() as tx:
+            for statement in SCHEMA_STATEMENTS:
+                tx.execute(statement)
+            for statement in INDEX_STATEMENTS:
+                tx.execute(statement)
 
     @contextmanager
     def transaction(self) -> Generator[sqlite3.Connection, None, None]:

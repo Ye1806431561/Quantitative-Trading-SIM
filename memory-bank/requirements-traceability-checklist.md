@@ -1,9 +1,9 @@
-# 需求追踪清单（Phase 0-1 / Step 1-8）
+# 需求追踪清单（Phase 0-1 / Step 1-10）
 
 ## 说明
 - 来源文档：`memory-bank/product-requirement-document.md`
 - 目标：将需求逐项映射到模块与交付物，并标记范围（必选/可选）
-- 状态：已完成实施计划第 1-8 步，且第 8 步已验证通过（第 9 步未开始）
+- 状态：已完成实施计划第 1-10 步，且第 10 步已验证通过（第 11 步未开始）
 
 ## 最小可用范围（MVP）定义
 
@@ -150,3 +150,18 @@
 - [x] 数据库路径取自配置（`system.database_path`），支持通过配置构建数据库连接管理器。
 - [x] 已完成打开/提交/回滚/关闭流程测试（`tests/test_database.py`），满足资源释放与事务边界要求。
 - [x] 用户验证通过（2026-02-17）。
+
+## 第9步验收检查（已通过）
+- [x] 已在 `src/core/database.py` 定义并初始化六张核心表：`accounts`、`orders`、`trades`、`strategy_runs`、`positions`、`candles`。
+- [x] `positions` 表约束与索引已落地：`UNIQUE(symbol)`、`CHECK(amount >= 0)`、`idx_positions_symbol(symbol)`。
+- [x] `candles` 表约束与索引已落地：`UNIQUE(symbol, timeframe, timestamp)`、`idx_candles_symbol_time(symbol, timeframe, timestamp)`、`idx_candles_timestamp(timestamp)`。
+- [x] 字段、UNIQUE、CHECK、索引与 `memory-bank/CLAUDE.md` 行 387–520 验收口径一致。
+- [x] 已通过结构与约束自动化验证（`tests/test_database.py`，11 项通过）。
+- [x] 用户验证通过（2026-02-17）。
+
+## 第10步验收检查（已通过）
+- [x] 已为账户、订单、交易、持仓、K 线、策略运行记录定义领域模型与 `validate` 规则。
+- [x] 校验覆盖：必填字段、正数/非负数、比例区间、价格高低开收关系、时间戳非负与先后约束、订单 filled 不超 amount、非市价单必须提供 price、K 线 timeframe 白名单复用。
+- [x] 引入枚举消除魔法字符串：订单类型/方向/状态、交易方向、策略运行状态。
+- [x] 新增通用校验工具 `validation.py` 复用数值/时间戳/枚举校验。
+- [x] 自动化测试 `tests/test_models.py` 覆盖正反例并通过；全量测试 `PYTHONPATH=. ./.venv/bin/pytest -q` 通过（33 passed）。

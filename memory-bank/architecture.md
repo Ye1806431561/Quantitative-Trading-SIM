@@ -1,9 +1,10 @@
 # Architecture Notes
 
 ## 当前阶段定位（2026-02-17）
-- 仓库已完成 `implementation-plan.md` Phase 0 第 1-7 条，及 Phase 1 第 8 条，包含：需求追踪、范围收敛、骨架目录、依赖锁定、配置模板落地、配置优先级与校验规则实现、日志方案落地、数据库连接生命周期实现。
-- 当前处于“Phase 1 起步、待进入第 9 步”阶段：`src/utils/config*`、`src/utils/logger.py` 与 `src/core/database.py` 已形成运行前配置、日志与数据库生命周期基线，第 9 步（表结构定义与审核）尚未开始。
+- 仓库已完成 `implementation-plan.md` Phase 0 第 1-7 条，Phase 1 第 8-11 条：需求追踪、范围收敛、骨架目录、依赖锁定、配置模板与优先级/校验规则、日志方案、数据库生命周期、核心表结构、领域模型与校验规则、账户初始化与余额管理。
+- 当前处于"Phase 1 进行中、待进入第 12 步"阶段：账户服务已就绪（含持仓恢复与总资产估值），订单持久化接口尚未开始。
 - 最小交付范围仍锁定为 CLI + 模拟盘（回测与实时模拟），Web 能力保留为可选项且暂不交付。
+- **第 11 步验证发现与修复**：`require_timestamp()` 原先仅接受数值类型，但 SQLite `PARSE_DECLTYPES` 将 `TIMESTAMP` 列解析为 `datetime` 对象，导致测试失败。已修复 `src/core/validation.py` 兼容三种时间戳来源（数值、`datetime` 对象、ISO 字符串），全量测试 38 passed。
 
 ## 文件作用说明（`memory-bank/`）
 
@@ -47,8 +48,8 @@
 5. `findings.md` 记录“为什么这样做、遇到什么问题、依据是什么”。
 6. `architecture.md` 解释“上述文档如何共同构成当前架构基线”。
 
-## 工程骨架与基础实现文件作用（第 3-8 步）
-- `src/core/*.py`：核心业务域实现入口（账户、订单、撮合、数据库）；其中 `database.py` 已落地生命周期管理，其余模块为后续 Phase 1-2 承接点。
+## 工程骨架与基础实现文件作用（第 3-11 步）
+- `src/core/*.py`：核心业务域实现入口（账户、订单、撮合、数据库、领域模型校验）；其中 `database.py` 已落地生命周期管理与 schema 初始化（六表、约束、索引），`enums.py`/`validation.py`/`account.py`/`order.py`/`trade.py`/`position.py`/`candle.py`/`strategy_run.py` 已完成领域模型与校验规则（`validation.py` 已修复 `require_timestamp()` 兼容 SQLite `datetime` 对象），`account_service.py` 已实现账户初始化、余额管理、持仓恢复与总资产估值，第 12 步以后可直接复用；`matching.py` 等其余模块为后续 Phase 1-2 承接点。
 - `src/data/*.py`：数据接入与存储占位（市场数据、历史数据），用于承接 Phase 1 与 Phase 2。
 - `src/strategies/*.py`：策略接口与内置策略占位，用于承接 Phase 3。
 - `src/backtest/*.py`：回测引擎与分析器占位，用于承接 Phase 3。
@@ -63,7 +64,7 @@
 - `tests/test_config.py`：配置层验收测试（优先级三场景 + 关键反例），用于支撑 Phase 0 第 6 条验收。
 - `tests/test_logger.py`：日志层验收测试（分流、脱敏、非法类型防御），用于支撑 Phase 0 第 7 条自动化验证。
 - `tests/verify_step_7.py`：第 7 步手工演练脚本，用于触发多级日志并检查日志文件落盘与脱敏结果。
-- `tests/test_database.py`：第 8 步数据库生命周期测试（配置路径、提交、回滚、关闭），用于支撑 Phase 1 第 8 条自动化验证。
+- `tests/test_database.py`：第 8-9 步数据库测试（生命周期 + 表结构/约束/索引/外键），用于支撑 Phase 1 第 8-9 条自动化验证。
 - `tests/*.py`（其余）：测试模块占位，用于承接 Phase 4 第 39 条。
 - `requirements.txt`：当前仓库依赖清单入口（安装/CI 统一来源）；后续若恢复严格锁定版本，应与 Phase 0 第 4 条验收口径保持一致。
 - `README.md`：补充第 7 步日志方案说明与手工演练步骤，作为日志策略落地说明文档。
@@ -80,7 +81,14 @@
   - 连接管理：`open()` / `close()`
   - 事务边界：`transaction()` 自动提交与异常回滚
   - 配置接入：`from_config()` 读取 `system.database_path`
+  - schema 初始化：`initialize_schema()` 统一创建 `accounts`、`orders`、`trades`、`strategy_runs`、`positions`、`candles`
+  - 关键约束与索引：`positions` 的 `UNIQUE/CHECK + idx_positions_symbol`；`candles` 的复合 `UNIQUE + 两个查询索引`
 - 优先级规则已固定为 `默认值 < YAML < 环境变量`，并通过独立测试文件验证三组场景，后续配置演进可直接复用同一验收模式。
 - 通过“未知字段拒绝 + 参数关系校验”将配置错误前置到启动阶段，减少运行中故障面。
 - 第 7 步日志方案已直接消费 `load_config()` 产出的 `logging` 配置，避免重复解析配置逻辑。
-- 下一步（第 9 步）应在既有生命周期管理基础上落地六张核心表与约束/索引，并与 `CLAUDE.md` 行 387–520 保持一致。
+- 第 9 步已完成并通过验证；下一步（第 10 步）应仅推进领域模型与校验规则定义，不提前进入账户/订单流程实现。
+- 第 11 步已完成并通过验证：
+  - `src/core/account_service.py` 实现账户生命周期管理（初始化、查询、余额变更、持仓恢复、总资产估值）。
+  - 验证过程发现 `require_timestamp()` 不兼容 SQLite `PARSE_DECLTYPES` 产生的 `datetime` 对象，已修复为兼容数值、`datetime` 对象、ISO 字符串三种来源。
+  - 全量测试 38 passed（含 `test_account` 5 项、`test_models` 14 项、`test_database` 11 项、`test_config` 5 项、`test_logger` 3 项）。
+

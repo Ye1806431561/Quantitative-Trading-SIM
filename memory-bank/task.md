@@ -11,9 +11,9 @@
 
 ## Phase 1: Data Layer & Storage
 - [x] 8. Design database connection lifecycle <!-- id: 7 -->
-- [ ] 9. Define & verify table structures <!-- id: 8 -->
-- [ ] 10. Define domain models & validation rules <!-- id: 9 -->
-- [ ] 11. Implement account initialization & balance management <!-- id: 10 -->
+- [x] 9. Define & verify table structures <!-- id: 8 -->
+- [x] 10. Define domain models & validation rules <!-- id: 9 -->
+- [x] 11. Implement account initialization & balance management <!-- id: 10 -->
 - [ ] 12. Implement order persistence interfaces <!-- id: 11 -->
 - [ ] 13. Implement trade recording & order association <!-- id: 12 -->
 - [ ] 14. Design market data fetch interfaces <!-- id: 13 -->
