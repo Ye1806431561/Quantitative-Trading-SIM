@@ -342,11 +342,29 @@
 - 执行 `implementation-plan.md` Phase 1 第 12 条：实现订单持久化接口（创建、查询、状态更新、撤销），保证幂等与一致性。
 
 ### 已完成事项
-- 待开始。
+- 完整阅读并复核 `memory-bank/` 全部文档，确认第 12 步边界与验收口径。
+- 实现订单持久化服务（`src/core/order_service.py`）：
+  - `OrderService`：订单生命周期管理（创建、查询、状态更新、撤销）。
+  - `create_order()`：创建订单并冻结资金（买单），支持幂等性。
+  - `get_order()` / `list_orders()`：按 ID 查询或按条件过滤（symbol、status、limit）。
+  - `update_order_status()`：状态流转校验（PENDING→OPEN→PARTIALLY_FILLED→FILLED/CANCELED），部分成交时消耗冻结资金。
+  - `cancel_order()`：撤销订单并释放未成交部分的冻结资金，支持幂等性。
+  - 状态机校验：定义合法流转表，拒绝非法状态转换。
+  - 资金管理：买单创建时冻结资金，部分成交时消耗冻结资金，取消时释放剩余冻结资金。
+- 修复 `orders` 表结构：将 `created_at` 和 `updated_at` 从 `TIMESTAMP` 改为 `INTEGER`（存储毫秒级时间戳），避免 SQLite `PARSE_DECLTYPES` 解析冲突。
+- 新增 `tests/test_order_service.py`，覆盖 21 项验收测试：
+  - 订单创建：冻结资金、参数校验、资金不足拒绝。
+  - 订单查询：按 ID、按 symbol、按 status、limit 分页。
+  - 状态更新：合法流转、非法流转拒绝、filled 超限拒绝。
+  - 订单撤销：释放冻结资金、部分成交后释放剩余、幂等性。
+- 全量测试通过：59 passed（含 21 项订单服务测试、38 项之前的测试）。
 
 ### 验收状态
-- 尚未开始。
+- Phase 1 第 12 条已完成且全量测试通过。
+- 等待用户验证后开始第 13 步（交易记录写入与订单关联）。
 
 ### 交接备注
-- 第 12 步涉及 `orders` 表读写与 `AccountService` 交互（冻结资金），需注意事务边界。
+- 订单服务已实现完整的状态机与资金管理，可作为第 13 步交易记录写入的基础。
+- 订单状态流转与资金冻结/消耗/释放逻辑已通过 21 项测试固化，后续修改需同步更新测试。
+- 第 13 步需实现交易记录写入（`trades` 表）并与订单关联，包含手续费字段。
 
