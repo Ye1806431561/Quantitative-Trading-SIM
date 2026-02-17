@@ -1,8 +1,8 @@
 # Architecture Notes
 
-## 当前阶段定位（2026-02-16）
-- 仓库已完成 `implementation-plan.md` Phase 0 第 1-4 条，包含：需求追踪、范围收敛、骨架目录、依赖锁定。
-- 已进入“依赖清单锁定”阶段，`requirements.txt` 为唯一可信源；第 5 步（配置模板）尚未开始。
+## 当前阶段定位（2026-02-17）
+- 仓库已完成 `implementation-plan.md` Phase 0 第 1-7 条，及 Phase 1 第 8 条，包含：需求追踪、范围收敛、骨架目录、依赖锁定、配置模板落地、配置优先级与校验规则实现、日志方案落地、数据库连接生命周期实现。
+- 当前处于“Phase 1 起步、待进入第 9 步”阶段：`src/utils/config*`、`src/utils/logger.py` 与 `src/core/database.py` 已形成运行前配置、日志与数据库生命周期基线，第 9 步（表结构定义与审核）尚未开始。
 - 最小交付范围仍锁定为 CLI + 模拟盘（回测与实时模拟），Web 能力保留为可选项且暂不交付。
 
 ## 文件作用说明（`memory-bank/`）
@@ -47,19 +47,40 @@
 5. `findings.md` 记录“为什么这样做、遇到什么问题、依据是什么”。
 6. `architecture.md` 解释“上述文档如何共同构成当前架构基线”。
 
-## 工程骨架文件作用（第 3-4 步）
-- `src/core/*.py`：核心业务域占位（账户、订单、撮合、数据库），用于承接 Phase 1 实现。
+## 工程骨架与基础实现文件作用（第 3-8 步）
+- `src/core/*.py`：核心业务域实现入口（账户、订单、撮合、数据库）；其中 `database.py` 已落地生命周期管理，其余模块为后续 Phase 1-2 承接点。
 - `src/data/*.py`：数据接入与存储占位（市场数据、历史数据），用于承接 Phase 1 与 Phase 2。
 - `src/strategies/*.py`：策略接口与内置策略占位，用于承接 Phase 3。
 - `src/backtest/*.py`：回测引擎与分析器占位，用于承接 Phase 3。
 - `src/live/*.py`：实时模拟主循环占位，用于承接 Phase 3。
-- `src/utils/*.py`：日志与配置工具占位，用于承接 Phase 0 第 5-7 条。
-- `config/config.yaml`、`config/strategies.yaml`、`config/.env.example`：配置模板占位，用于承接 Phase 0 第 5 条。
-- `tests/*.py`：测试模块占位，用于承接 Phase 4 第 39 条。
-- `requirements.txt`：现已写入并锁定技术栈依赖与版本，是安装/CI 的唯一可信源（Phase 0 第 4 条）。
-- `main.py`、`README.md`：程序入口与使用文档入口占位，用于承接 Phase 4 第 41 条。
+- `src/utils/config.py`：配置加载编排层；负责执行 `默认值 < YAML < 环境变量` 的合并顺序，并提供统一入口。
+- `src/utils/config_defaults.py`：配置默认值与环境变量映射定义层；集中维护默认参数与 env 覆盖路径。
+- `src/utils/config_validation.py`：配置校验层；负责主配置与策略配置的类型、范围、关系约束校验。
+- `src/utils/logger.py`：日志初始化与分流实现层；负责控制台 + 文件输出、分级过滤、轮转/保留/压缩参数接入、敏感信息脱敏。
+- `config/config.yaml`：系统主配置模板，承载系统、日志、交易所、账户、交易、风控、回测字段，是运行参数的 YAML 主入口。
+- `config/strategies.yaml`：策略配置模板，承载内置策略启停与参数字段，是策略实例化的 YAML 输入入口。
+- `config/.env.example`：环境变量模板，承载敏感或环境相关键值（API、数据库路径、日志级别），是 `.env` 初始化参考。
+- `tests/test_config.py`：配置层验收测试（优先级三场景 + 关键反例），用于支撑 Phase 0 第 6 条验收。
+- `tests/test_logger.py`：日志层验收测试（分流、脱敏、非法类型防御），用于支撑 Phase 0 第 7 条自动化验证。
+- `tests/verify_step_7.py`：第 7 步手工演练脚本，用于触发多级日志并检查日志文件落盘与脱敏结果。
+- `tests/test_database.py`：第 8 步数据库生命周期测试（配置路径、提交、回滚、关闭），用于支撑 Phase 1 第 8 条自动化验证。
+- `tests/*.py`（其余）：测试模块占位，用于承接 Phase 4 第 39 条。
+- `requirements.txt`：当前仓库依赖清单入口（安装/CI 统一来源）；后续若恢复严格锁定版本，应与 Phase 0 第 4 条验收口径保持一致。
+- `README.md`：补充第 7 步日志方案说明与手工演练步骤，作为日志策略落地说明文档。
+- `main.py`：程序入口占位，用于承接 CLI 与运行编排接入。
 
 ## 本轮新增架构洞察
-- 依赖清单先行且锁版本，可为后续配置、数据库与引擎实现提供稳定基线，避免依赖漂移。
-- `requirements.txt` 与 `tech-stack.md` 形成双向校验：前者作为安装源，后者作为审计基线。
-- Phase 0 仍保持“文档约束优先”，下一步（配置模板与加载优先级）应继续以 `CLAUDE.md` 与技术栈约束为准，确保配置字段与优先级规则先定后码。
+- 基础运行层已形成“配置闭环 + 日志闭环”：
+  - 模板层：`config/config.yaml`、`config/strategies.yaml`、`config/.env.example`
+  - 加载层：`src/utils/config.py`
+  - 默认值与映射层：`src/utils/config_defaults.py`
+  - 校验层：`src/utils/config_validation.py`
+- 日志层：`src/utils/logger.py` + `tests/test_logger.py` + `README.md`（方案说明）+ `tests/verify_step_7.py`（手工演练）
+- 数据层生命周期基线：`src/core/database.py` + `tests/test_database.py`
+  - 连接管理：`open()` / `close()`
+  - 事务边界：`transaction()` 自动提交与异常回滚
+  - 配置接入：`from_config()` 读取 `system.database_path`
+- 优先级规则已固定为 `默认值 < YAML < 环境变量`，并通过独立测试文件验证三组场景，后续配置演进可直接复用同一验收模式。
+- 通过“未知字段拒绝 + 参数关系校验”将配置错误前置到启动阶段，减少运行中故障面。
+- 第 7 步日志方案已直接消费 `load_config()` 产出的 `logging` 配置，避免重复解析配置逻辑。
+- 下一步（第 9 步）应在既有生命周期管理基础上落地六张核心表与约束/索引，并与 `CLAUDE.md` 行 387–520 保持一致。

@@ -1,0 +1,23 @@
+# SMA Strategy
+sma_strategy:
+  enabled: true
+  params:
+    fast_period: 10
+    slow_period: 30
+    position_size: 0.2
+
+# Grid Strategy
+grid_strategy:
+  enabled: false
+  params:
+    grid_num: 10
+    price_range: 0.1
+    position_size: 0.1
+
+# Bollinger Strategy
+bollinger_strategy:
+  enabled: false
+  params:
+    period: 20
+    std_dev: 2.0
+    position_size: 0.2

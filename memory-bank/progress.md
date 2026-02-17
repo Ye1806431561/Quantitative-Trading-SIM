@@ -118,3 +118,135 @@
 ### 交接备注
 - `requirements.txt` 现为依赖与版本的单一可信源，后续安装或 CI 应以此为准。
 - 配置模板与加载优先级（Phase 0 第 5-6 条）尚未开始，保持现有占位文件不动。
+
+## 2026-02-16（第 5 步）
+
+### 本次目标
+- 执行 `implementation-plan.md` Phase 0 第 5 条：创建配置模板（`config.yaml`、`strategies.yaml`、`.env.example`），并保证字段与文档一致。
+
+### 已完成事项
+- 完整阅读并复核 `memory-bank/` 全部文档，确认第 5 步字段基线来源：
+  - `memory-bank/CLAUDE.md`
+  - `memory-bank/product-requirement-document.md`
+  - `memory-bank/implementation-plan.md`
+  - `memory-bank/tech-stack.md`
+  - `memory-bank/findings.md`
+  - `memory-bank/progress.md`
+  - `memory-bank/architecture.md`
+  - `memory-bank/requirements-traceability-checklist.md`
+- 完成配置模板落地：
+  - `config/config.yaml`：写入系统、日志、交易所、账户、交易、风控、回测配置字段。
+  - `config/strategies.yaml`：写入内置策略模板参数（`sma_strategy`、`grid_strategy`、`bollinger_strategy`）。
+  - `config/.env.example`：写入 API、数据库路径、日志级别环境变量模板。
+- 逐字段对照文档模板与约束，确认配置字段完整且无越界新增。
+- 你已确认第 5 步“通过”（2026-02-16）。
+- 验证通过后完成文档联动更新：
+  - `memory-bank/progress.md`
+  - `memory-bank/architecture.md`
+  - `memory-bank/findings.md`
+  - `memory-bank/requirements-traceability-checklist.md`
+
+### 验收状态
+- Phase 0 第 5 条已验证通过。
+- 第 6 步（配置加载优先级与校验规则）尚未开始。
+
+### 交接备注
+- 当前三份配置模板已可作为 Phase 0 第 6 条的输入基线。
+- 下一步应仅实现“默认值 < YAML < 环境变量”的加载优先级与校验规则，不修改第 5 步字段范围。
+
+## 2026-02-16（第 6 步）
+
+### 本次目标
+- 执行 `implementation-plan.md` Phase 0 第 6 条：设计并实现配置加载优先级（`默认值 < YAML < 环境变量`），并落地校验规则。
+
+### 已完成事项
+- 完整阅读并复核 `memory-bank/` 全部文档，确认第 6 步边界与验收口径。
+- 完成配置加载与优先级实现（不扩展第 5 步字段范围）：
+  - `src/utils/config.py`：
+    - 提供 `load_config()`（运行配置）与 `load_strategies_config()`（策略配置）。
+    - 实现加载顺序：默认值 → YAML 覆盖 → 环境变量覆盖。
+    - 增加 YAML 根节点类型检查与未知字段拒绝（防止越界配置）。
+  - `src/utils/config_defaults.py`：
+    - 固化 `DEFAULT_CONFIG` 与 `DEFAULT_STRATEGIES_CONFIG`。
+    - 固化环境变量覆盖映射：`LOG_LEVEL`、`DATABASE_PATH`、`EXCHANGE_API_KEY`、`EXCHANGE_API_SECRET`。
+  - `src/utils/config_validation.py`：
+    - 实现主配置校验（类型、必填、取值范围、风控关系约束、timeframe 白名单）。
+    - 实现策略配置校验（SMA 快慢线关系、参数范围、布林/网格参数合法性）。
+- 新增 `tests/test_config.py`，覆盖第 6 步验收所需的三组优先级场景：
+  - 默认值生效（无 YAML/无环境变量）。
+  - YAML 覆盖默认值。
+  - 环境变量覆盖 YAML。
+- 新增关键反例校验测试：
+  - 风控配置冲突（`max_position_size > max_total_position`）应报错。
+  - SMA 参数不合法（`fast_period >= slow_period`）应报错。
+- 你已确认第 6 步“通过”（2026-02-16）。
+
+### 验收状态
+- Phase 0 第 6 条已验证通过。
+- 按你的约束未开始第 7 步（日志方案设计）。
+
+### 交接备注
+- 配置层现已形成“加载器 + 默认值 + 校验器”三段式结构，后续新增配置项时需同步更新三处并补测试。
+- 第 7 步可直接基于 `load_config()` 输出的 `logging` 配置落地日志初始化方案。
+
+## 2026-02-16（第 7 步）
+
+### 本次目标
+- 执行 `implementation-plan.md` Phase 0 第 7 条：设计日志方案（分级、终端+文件、轮转、格式），并记录在说明文档。
+- 验证日志方案落地策略。
+
+### 已完成事项
+- 完整阅读并复核 `memory-bank/` 全部文档，确认第 7 步边界与验收口径。
+- 完成日志方案实现与说明文档落地：
+  - `src/utils/logger.py`：
+    - 提供 `setup_logger(config)`，实现终端 + 文件并行输出。
+    - 支持按 `config.logging` 配置轮转、保留、压缩、格式化。
+    - 实现日志分流：`main`、`strategy`、`trade`、`error`。
+    - 实现敏感信息脱敏（`api_key/api_secret/token/password/secret`）。
+  - `tests/test_logger.py`：
+    - 验证分流正确性（main/strategy/trade/error 文件）。
+    - 验证敏感字段脱敏生效。
+    - 验证非法 `log_type` 拒绝。
+  - `README.md`：
+    - 新增第 7 步日志方案说明。
+    - 新增手工演练步骤（触发各级日志并检查落盘文件）。
+- 你已确认第 7 步“通过”（2026-02-16）。
+
+### 验收状态
+- Phase 0 第 7 条已验证通过。
+- Phase 0 所有步骤已完成（第 1-7 条）。
+- 按你的约束未开始第 8 步。
+
+### 交接备注
+- 日志系统已就绪，可用于后续 Phase 1 数据层开发的调试与监控。
+- 第 8 步开始前，继续沿用“先记录连接生命周期设计，再落代码”的执行节奏。
+
+## 2026-02-17（第 8 步）
+
+### 本次目标
+- 执行 `implementation-plan.md` Phase 1 第 8 条：设计数据库连接生命周期（打开、关闭、事务），并确保数据库路径取自配置。
+
+### 已完成事项
+- 完整阅读并复核 `memory-bank/` 全部文档，确认第 8 步边界与验收口径。
+- 完成数据库生命周期实现：
+  - `src/core/database.py`：
+    - 新增 `SQLiteDatabase` 生命周期管理器。
+    - 实现 `open()` / `close()`。
+    - 实现 `transaction()` 上下文管理，覆盖自动提交与异常回滚。
+    - 实现 `from_config()`，从 `system.database_path` 构建数据库连接管理器。
+    - 提供连接状态与上下文管理能力（`is_open`、`__enter__`/`__exit__`）。
+- 新增第 8 步验收测试：
+  - `tests/test_database.py`：
+    - 验证数据库路径来自配置。
+    - 验证打开→提交→关闭流程。
+    - 验证异常触发回滚。
+    - 验证关闭幂等与未打开连接保护。
+- 你已确认第 8 步“通过”（2026-02-17）。
+
+### 验收状态
+- Phase 1 第 8 条已验证通过。
+- 按你的约束未开始第 9 步（表结构定义与审核）。
+
+### 交接备注
+- 数据层已具备基础连接生命周期与事务边界，可作为第 9 步建表与索引实现的底座。
+- 下一步进入第 9 步时，应仅落地 `accounts`、`orders`、`trades`、`strategy_runs`、`positions`、`candles` 六表及其约束/索引，不跨步实现第 10 步。

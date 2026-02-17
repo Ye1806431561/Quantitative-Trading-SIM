@@ -1,9 +1,9 @@
-# 需求追踪清单（Phase 0 / Step 1-4）
+# 需求追踪清单（Phase 0-1 / Step 1-8）
 
 ## 说明
 - 来源文档：`memory-bank/product-requirement-document.md`
 - 目标：将需求逐项映射到模块与交付物，并标记范围（必选/可选）
-- 状态：已完成实施计划第 1-4 步，且第 4 步已验证通过
+- 状态：已完成实施计划第 1-8 步，且第 8 步已验证通过（第 9 步未开始）
 
 ## 最小可用范围（MVP）定义
 
@@ -65,7 +65,7 @@
 | FR-ANL-01 | 交易统计（次数/胜率/盈亏比） | `src/backtest/analyzers.py`, `src/analysis/metrics.py` | 统计指标模块 | 必选 | - |
 | FR-ANL-02 | 收益指标（总收益/年化/最大回撤/夏普/索提诺） | `src/analysis/metrics.py` | 收益指标模块 | 必选 | - |
 | FR-ANL-03 | 可视化报表（资金曲线/回撤/分布/持仓时间） | `src/analysis/visualization.py` | 图表输出模块 | 必选 | - |
-| FR-LOG-01 | 交易/策略/错误日志分级记录 | `src/utils/logger.py` | 日志初始化与分流 | 必选 | - |
+| FR-LOG-01 | 交易/策略/错误日志分级记录 | `src/utils/logger.py` | 日志初始化与分流（终端+文件+轮转+脱敏） | 必选 | - |
 | FR-LOG-02 | 实时监控（策略状态/资产变化/异常告警） | `src/live/monitor.py`, `src/cli.py` | 监控输出与查询接口 | 必选 | - |
 | FR-CLI-01 | CLI 命令入口与常用命令 | `src/cli.py`, `main.py` | CLI 子命令集合 | 必选 | - |
 | FR-WEB-01 | Web 界面（可选） | `web/`（预留） | Web 服务与仪表盘 | 可选 | Phase 0-4 当前交付不含 Web，优先保证 CLI 与双引擎闭环 |
@@ -122,3 +122,31 @@
 - [x] Python 基线要求（3.10+）已在依赖文件中明确标注。
 - [x] 依赖列表与 `memory-bank/tech-stack.md` 逐项比对一致。
 - [x] 用户验证通过（2026-02-16）。
+
+## 第5步验收检查（已通过）
+- [x] `config/config.yaml` 已写入系统、日志、交易所、账户、交易、风控、回测字段。
+- [x] `config/strategies.yaml` 已写入内置策略参数模板（SMA / Grid / Bollinger）。
+- [x] `config/.env.example` 已写入 API、数据库路径、日志级别环境变量模板。
+- [x] 配置模板字段与 `memory-bank/tech-stack.md`、`memory-bank/CLAUDE.md`、PRD 描述逐项对齐，无缺漏。
+- [x] 用户验证通过（2026-02-16）。
+
+## 第6步验收检查（已通过）
+- [x] 已实现配置加载优先级：`默认值 < YAML < 环境变量`（`src/utils/config.py`）。
+- [x] 已实现配置校验规则（主配置与策略配置）并落地到 `src/utils/config_validation.py`。
+- [x] 已实现默认值与环境变量映射集中定义（`src/utils/config_defaults.py`）。
+- [x] 已新增优先级三场景测试与关键反例测试（`tests/test_config.py`）。
+- [x] 用户验证通过（2026-02-16）。
+
+## 第7步验收检查（已通过）
+- [x] 已实现日志方案：分级、终端+文件、轮转、格式（`src/utils/logger.py`）。
+- [x] 已实现日志分流：`main` / `strategy` / `trade` / `error` 文件通道。
+- [x] 已实现敏感字段脱敏（`api_key`、`api_secret`、`token`、`password`、`secret`）。
+- [x] 已新增日志自动化测试（`tests/test_logger.py`）与手工演练脚本（`tests/verify_step_7.py`）。
+- [x] 已在说明文档记录日志方案与演练步骤（`README.md`）。
+- [x] 用户验证通过（2026-02-16）。
+
+## 第8步验收检查（已通过）
+- [x] 已实现数据库连接生命周期（打开、关闭、事务）并落地到 `src/core/database.py`。
+- [x] 数据库路径取自配置（`system.database_path`），支持通过配置构建数据库连接管理器。
+- [x] 已完成打开/提交/回滚/关闭流程测试（`tests/test_database.py`），满足资源释放与事务边界要求。
+- [x] 用户验证通过（2026-02-17）。
