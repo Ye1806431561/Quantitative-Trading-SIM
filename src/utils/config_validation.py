@@ -38,6 +38,31 @@ def validate_config(config: dict[str, Any]) -> None:
     _require_string(config, ("exchange", "api_key"), allow_empty=True)
     _require_string(config, ("exchange", "api_secret"), allow_empty=True)
 
+    runtime_write_target = _require_string(config, ("market_data", "runtime_write_target"))
+    if runtime_write_target.lower() != "sqlite":
+        raise ConfigValidationError(
+            "market_data.runtime_write_target must be 'sqlite' "
+            "(CSV/Parquet are import/export/backup only)"
+        )
+    _require_int(config, ("market_data", "retry", "max_attempts"), min_value=1)
+    _require_number(
+        config,
+        ("market_data", "retry", "initial_delay_seconds"),
+        min_value=0.0,
+        inclusive_min=False,
+    )
+    _require_number(
+        config,
+        ("market_data", "retry", "backoff_multiplier"),
+        min_value=1.0,
+    )
+    _require_number(
+        config,
+        ("market_data", "retry", "max_delay_seconds"),
+        min_value=0.0,
+        inclusive_min=False,
+    )
+
     _require_number(config, ("account", "initial_capital"), min_value=0.0, inclusive_min=False)
     _require_string(config, ("account", "base_currency"))
 

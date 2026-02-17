@@ -58,6 +58,15 @@ DEFAULT_CONFIG: dict[str, Any] = {
         "api_key": "",
         "api_secret": "",
     },
+    "market_data": {
+        "runtime_write_target": "sqlite",
+        "retry": {
+            "max_attempts": 3,
+            "initial_delay_seconds": 0.2,
+            "backoff_multiplier": 2.0,
+            "max_delay_seconds": 2.0,
+        },
+    },
     "account": {
         "initial_capital": 10000.0,
         "base_currency": "USDT",

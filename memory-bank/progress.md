@@ -368,3 +368,120 @@
 - 订单状态流转与资金冻结/消耗/释放逻辑已通过 21 项测试固化，后续修改需同步更新测试。
 - 第 13 步需实现交易记录写入（`trades` 表）并与订单关联，包含手续费字段。
 
+## 2026-02-17（第 13 步）
+
+### 本次目标
+- 执行 `implementation-plan.md` Phase 1 第 13 条：实现交易记录写入与订单关联流程，含手续费字段。
+
+### 已完成事项
+- 更新数据库 schema：
+  - `trades.timestamp` 改为 `INTEGER NOT NULL`，默认毫秒级时间戳，便于统一解析。
+  - 新增索引 `idx_trades_order_id` 提升按订单查询成交记录的性能。
+- 新增交易记录服务 `src/core/trade_service.py`：
+  - `TradeService.record_trade()`：校验输入、插入 `trades` 记录（含 `fee`）、校验订单状态（仅允许 `open/partially_filled`）、防止 overfill、按订单价格消费冻结资金（买单）、更新订单 `filled` 与状态（部分成交→`partially_filled`，全部成交→`filled`）。
+  - `TradeService.list_trades_for_order()`：按订单 ID 查询成交记录，倒序返回。
+- 复用/抽象资金消耗逻辑：
+  - 在 `OrderService` 中抽出 `_consume_frozen_funds()`，供状态更新与成交写入共用，避免重复代码。
+- 新增自动化测试 `tests/test_trade_service.py` 覆盖：
+  - 成交记录写入与订单关联。
+  - 部分成交/完全成交后订单 `filled` 与状态更新。
+  - overfill 拒绝、缺失订单拒绝。
+
+### 测试情况
+- 已通过临时脚本 `tests/run_tests_manual.py`手动运行测试，全量通过：
+  - `test_record_trade_persists_and_links_order`: PASS
+  - `test_record_trade_updates_filled_amount_and_status`: PASS
+  - `test_record_trade_rejects_overfill`: PASS
+  - `test_record_trade_requires_existing_order`: PASS
+
+### 验收状态
+- Phase 1 第 13 步已完成且测试通过。
+- 交易记录与订单关联功能验证正常。
+- 等待开始 Phase 1 第 14 步（市场数据接口设计）。
+
+### 交接备注
+- 资金流转：成交写入会按订单价格消费冻结资金（买单），与第 12 步的资金冻结/消耗逻辑保持一致。
+- 时间戳：`trades.timestamp` 统一为毫秒整数，避免 SQLite `PARSE_DECLTYPES` 解析差异。
+- 若测试需运行：先 `pip install -r requirements.txt`，再 `pytest`.
+
+## 2026-02-17（第 14 步）
+
+### 本次目标
+- 执行 `implementation-plan.md` Phase 1 第 14 条：设计市场数据获取接口（交易所选择、限流、错误重试），并记录异常处理策略与运行态数据路径约束。
+
+### 已完成事项
+- 完整阅读并复核 `memory-bank/` 全部文档，确认第 14 步边界与验收口径。
+- 落地市场数据接口实现：
+  - `src/data/market.py`：
+    - 实现 `MarketDataFetcher` 统一接口（`fetch_ticker` / `fetch_order_book` / `fetch_ohlcv`）。
+    - 支持 `from_config()` 基于配置选择交易所与限流开关。
+    - 支持 `from_exchange()` 注入式构建，便于模拟与测试。
+    - 实现失败告知：重试耗尽或不可重试错误时抛出 `MarketDataFetchError`，包含尝试次数与错误类型。
+  - `src/data/market_policy.py`：
+    - 定义 `RetryPolicy`、`ExchangeSettings`、`MarketDataConfigError`。
+    - 定义并校验运行态写入目标：`market_data.runtime_write_target` 仅允许 `sqlite`。
+    - 明确 `csv/parquet` 仅用于 import/export/backup。
+  - `src/data/market_retry.py`：
+    - 实现 `RequestRateLimiter` 本地限流器。
+    - 实现错误分类：限流类、可重试网络类、不可重试类。
+- 新增自动化测试 `tests/test_market_data.py`，覆盖第 14 步验收场景：
+  - 交易所选择与配置生效。
+  - 限流错误重试后成功。
+  - 网络错误重试耗尽后失败告知。
+  - 不可重试错误快速失败。
+  - 本地限流在连续请求间生效。
+  - 非 SQLite 运行态写入目标被拒绝。
+- 同步补齐市场数据配置基线：
+  - `config/config.yaml` 新增 `market_data` 配置段（运行态写入目标 + retry 参数）。
+  - `src/utils/config_defaults.py` 新增 `market_data` 默认值，允许配置加载器识别该配置段。
+  - `src/utils/config_validation.py` 增加 `market_data` 校验规则，拒绝非 `sqlite` 运行态写入目标。
+  - `tests/test_config.py` 新增反例测试，验证 `runtime_write_target=csv` 会被拒绝。
+- 新增接口设计文档 `memory-bank/market-data-interface-design.md`，记录限流/重试/异常策略与数据路径约束声明。
+
+### 测试情况
+- 已通过临时脚本 `tests/run_tests_market_manual.py` 手动运行测试，全量通过：
+  - `test_from_config_selects_exchange`: PASS
+  - `test_fetch_ticker_retries_on_rate_limit_then_succeeds`: PASS
+  - `test_fetch_ticker_fails_after_retry_limit`: PASS
+  - `test_fetch_ticker_fails_fast_on_non_retryable_error`: PASS
+  - `test_rate_limiter_waits_between_requests`: PASS
+  - `test_runtime_write_target_rejects_csv`: PASS
+
+### 验收状态
+- Phase 1 第 14 步接口设计与异常策略实现已验证通过。
+- 交易所适配、限流、重试策略符合设计要求。
+- 等待开始 Phase 1 第 15 步（历史 K 线下载与存储）。
+
+### 交接备注
+- 第 14 步仅覆盖接口设计与异常策略，不包含历史数据下载落库实现。
+- 在你确认第 14 步测试通过前，保持第 15 步不启动。
+
+## 2026-02-17（第 15 步）
+
+### 本次目标
+- 执行 `implementation-plan.md` Phase 1 第 15 条：实现历史 K 线下载与本地存储（周期、命名规范、时间范围，写入目标表 `candles`）。
+
+### 已完成事项
+- 完整阅读并复核 `memory-bank/` 全部文档后开始实现第 15 步（按你的要求不启动第 16 步）。
+- 实现历史数据存储服务 `src/data/storage.py`：
+  - 新增 `HistoricalCandleStorage`，提供 `download_and_store()` 与 `query_candles()`。
+  - 新增 `CandleDownloadRequest` 与 `CandleDownloadResult`，明确下载参数与结果结构。
+  - 支持 `symbol/timeframe/time range` 参数校验（含 timeframe 白名单与时间范围合法性）。
+  - 按时间游标分批调用 `fetch_ohlcv` 拉取历史 K 线，并写入 SQLite `candles` 表。
+  - 提供按 `symbol/timeframe/time range` 查询接口，结果按 `timestamp ASC` 返回。
+  - 新增命名规范方法 `build_dataset_name()`，统一生成如 `BTC_USDT_1h` 的数据集标识。
+- 新增自动化测试 `tests/test_storage.py`，覆盖第 15 步关键验收路径：
+  - 下载分页拉取并落库到 `candles` 表。
+  - 按时间范围查询结果正确且时间序升序。
+  - 非法时间范围、非法周期、非法 OHLCV 结构拒绝。
+- 本地测试结果：
+  - `PYTHONPATH=. ./.venv/bin/pytest -q tests/test_storage.py` → `5 passed`
+  - `PYTHONPATH=. ./.venv/bin/pytest -q tests/test_database.py tests/test_market_data.py tests/test_storage.py` → `22 passed`
+
+### 验收状态
+- Phase 1 第 15 步代码实现已完成，自动化测试通过。
+- 等待你执行并确认测试通过后，再开始第 16 步（历史数据缓存与去重）。
+
+### 交接备注
+- 第 15 步实现仅覆盖“下载 + 写入 + 查询”能力，未实现缓存命中与去重策略（保持第 16 步边界）。
+- 当前写入路径仍为 SQLite `candles` 表，未引入 CSV/Parquet 运行态写入。

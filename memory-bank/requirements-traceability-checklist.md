@@ -1,9 +1,9 @@
-# 需求追踪清单（Phase 0-1 / Step 1-12）
+# 需求追踪清单（Phase 0-1 / Step 1-15）
 
 ## 说明
 - 来源文档：`memory-bank/product-requirement-document.md`
 - 目标：将需求逐项映射到模块与交付物，并标记范围（必选/可选）
-- 状态：已完成实施计划第 1-12 步，且第 12 步已验证通过（第 13 步未开始）
+- 状态：已完成实施计划第 1-15 步代码与文档落地（第 15 步待用户测试验证），未开始第 16 步
 
 ## 最小可用范围（MVP）定义
 
@@ -185,3 +185,29 @@
 - [x] 修复 `orders` 表时间戳字段类型（`TIMESTAMP` → `INTEGER`），避免 SQLite `PARSE_DECLTYPES` 冲突。
 - [x] 自动化测试 `tests/test_order_service.py` 覆盖 21 项验收测试；全量测试 59 passed。
 - [x] 用户验证通过（2026-02-17）。
+
+## 第13步验收检查（待验证）
+- [x] 已实现成交记录服务 `TradeService`（`src/core/trade_service.py`），支持成交写入与订单关联。
+- [x] 成交写入包含手续费字段、写入 `trades` 表并通过外键关联订单。
+- [x] 成交写入更新订单 `filled` 与状态（部分成交→`partially_filled`，完全成交→`filled`），并对买单消费冻结资金。
+- [x] `trades.timestamp` 统一为毫秒整数并提供默认值；新增索引 `idx_trades_order_id` 便于按订单查询成交记录。
+- [x] 新增自动化测试 `tests/test_trade_service.py` 覆盖成交写入、状态更新、overfill 拒绝与缺失订单拒绝。
+- [ ] 用户验证（等待安装依赖后运行测试）。
+
+## 第14步验收检查（待验证）
+- [x] 已实现市场数据接口 `MarketDataFetcher`（`src/data/market.py`），覆盖交易所选择、行情读取接口、错误重试与失败告知。
+- [x] 已实现本地限流器 `RequestRateLimiter` 与错误分类重试策略（`src/data/market_retry.py`）。
+- [x] 已实现策略约束与校验（`src/data/market_policy.py`）：`market_data.runtime_write_target` 仅允许 `sqlite`。
+- [x] 已明确并固化约束：运行态写入目标仅 SQLite，`CSV/Parquet` 仅用于 import/export/backup。
+- [x] 已新增接口设计文档 `memory-bank/market-data-interface-design.md` 记录异常处理策略与数据路径约束。
+- [x] 已新增自动化测试 `tests/test_market_data.py`，覆盖限流、重试、失败告知与写入目标校验场景。
+- [ ] 用户验证（等待你运行测试并确认通过）。
+
+## 第15步验收检查（待验证）
+- [x] 已实现历史 K 线下载与存储服务 `HistoricalCandleStorage`（`src/data/storage.py`）。
+- [x] 已支持下载参数校验：`symbol`、`timeframe`、`start_timestamp`、`end_timestamp`、`batch_size`。
+- [x] 已实现按时间范围分页下载并写入 SQLite `candles` 表（运行态写入路径不涉及 CSV/Parquet）。
+- [x] 已实现 `build_dataset_name()` 命名规范（示例：`BTC_USDT_1h`）。
+- [x] 已实现按 `symbol/timeframe/time range` 查询接口，结果按 `timestamp ASC` 返回。
+- [x] 已新增自动化测试 `tests/test_storage.py`，覆盖分页下载、落库、时间序查询与异常输入校验。
+- [ ] 用户验证（等待你运行测试并确认通过）。

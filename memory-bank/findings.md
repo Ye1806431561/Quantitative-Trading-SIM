@@ -18,9 +18,9 @@
     - Python implementation
 -->
 <!-- Captured from user request -->
-- 阅读 `memory-bank/` 全部文档后，执行 `implementation-plan.md` 第 1-12 步。
-- 第 12 步内容：实现订单持久化接口（创建、查询、状态更新、撤销），保证幂等与一致性。
-- 验证通过后，更新 `progress.md` 等文档，准备进入第 13 步（交易记录写入与订单关联）。
+- 阅读 `memory-bank/` 全部文档后，执行 `implementation-plan.md` 第 15 步。
+- 第 15 步内容：实现历史 K 线下载与本地存储（周期、命名规范、时间范围，写入目标表 `candles`）。
+- 用户负责运行测试；在用户确认通过前，不启动第 16 步。
 
 ## Research Findings
 <!-- 
@@ -47,6 +47,16 @@
   - `orders` 表的 `created_at` 和 `updated_at` 字段使用 `TIMESTAMP` 类型会与 SQLite `PARSE_DECLTYPES` 冲突，改为 `INTEGER` 存储毫秒级时间戳。
   - 幂等性设计：重复创建已存在订单返回现有订单，重复取消已终态订单返回当前状态。
   - 全量测试 59 passed（含 21 项订单服务测试 + 38 项之前的测试）。
+- **Step 14 实现发现（2026-02-17）**：
+  - 行情接口需要将“交易所选择、限流、重试策略”解耦，避免单文件/单类膨胀。
+  - 可重试与不可重试错误必须显式分层，否则会把鉴权类错误误判为可重试，导致无效重试。
+  - 运行态写入目标必须在接口层硬性校验为 `sqlite`，防止误配置把 `csv/parquet` 当成运行态存储。
+  - 配置加载器启用了“未知字段拒绝”，因此需同步在 `config_defaults.py`/`config_validation.py` 增加 `market_data` 字段，否则无法从配置覆盖重试参数。
+  - 增加 `tests/test_market_data.py` 可直接模拟限流与网络错误，不依赖真实交易所网络请求。
+- **Step 15 实现发现（2026-02-17）**：
+  - 历史 K 线下载需要“时间游标 + 分页拉取”组合，避免一次性请求过大时间窗口。
+  - 查询接口必须固定 `ORDER BY timestamp ASC`，否则回测/指标消费端容易出现时间序错乱。
+  - 第 15 步仅实现“下载 + 落库 + 查询”，缓存与去重机制应留给第 16 步，避免跨步实现。
 
 ## Technical Decisions
 <!-- 
@@ -69,6 +79,13 @@
 | 买单资金分阶段管理（冻结→消耗→释放） | 确保资金流转清晰可追溯，避免资金泄漏或重复扣款 |
 | `orders` 表时间戳字段使用 `INTEGER` | 避免 SQLite `PARSE_DECLTYPES` 自动解析 `TIMESTAMP` 为 `datetime` 对象，统一使用毫秒级整数 |
 | 订单服务支持幂等性 | 防止重复操作导致的数据不一致，提高系统健壮性 |
+| `trades.timestamp` 统一为毫秒整数并设默认值 | 与订单时间戳一致，避免 SQLite 类型解析差异且便于排序 |
+| 成交写入复用资金消耗逻辑 | `TradeService.record_trade()` 共用订单服务的冻结资金消耗逻辑，保持资金流一致性 |
+| 市场数据接口拆分为 `market.py + market_policy.py + market_retry.py` | 遵守单文件 <300 行约束，并将策略/重试/配置职责解耦 |
+| 错误分类驱动重试策略 | 限流与瞬时网络错误重试，鉴权/参数错误快速失败，减少无效等待 |
+| 运行态写入目标在接口层强制为 SQLite | 对齐 `DC-001~DC-004`，阻止 CSV/Parquet 进入运行态写路径 |
+| 历史下载使用时间游标分页（`since = last_timestamp + 1`） | 保证下载窗口可推进且避免分页边界重复 |
+| 历史查询统一按 `timestamp ASC` 返回 | 保证策略与回测读取时间序稳定，避免消费端重复排序 |
 
 ## Issues Encountered
 <!-- 
@@ -88,6 +105,9 @@
 | `orders` 表 `TIMESTAMP` 字段与 `PARSE_DECLTYPES` 冲突 | 将 `created_at` 和 `updated_at` 字段类型从 `TIMESTAMP` 改为 `INTEGER`，存储毫秒级时间戳 |
 | 测试初始资金不足导致订单创建失败 | 将测试 fixture 中的初始资金从 10000 USDT 增加到 100000 USDT |
 | 部分成交后取消订单的资金处理不清晰 | 明确资金管理逻辑：部分成交时消耗冻结资金（从 frozen 和 balance 同时扣除），取消时只释放剩余冻结资金 |
+| 本地缺少 pytest 可执行文件 | 代码实现后无法直接运行测试，需先安装依赖再由用户执行 pytest |
+| 市场数据模块初稿单文件超过 300 行 | 按 CLAUDE 约束拆分为 `market.py`、`market_policy.py`、`market_retry.py`，保持职责单一 |
+| SQLite `PARSE_DECLTYPES` 触发 `DeprecationWarning` | 当前不影响功能；后续可统一替换 timestamp converter（与第 15 步实现无功能耦合） |
 
 ## Resources
 <!-- 
@@ -121,9 +141,16 @@
 - `src/core/strategy_run.py`
 - `src/core/account_service.py`
 - `src/core/order_service.py`
+- `src/data/market.py`
+- `src/data/market_policy.py`
+- `src/data/market_retry.py`
+- `src/data/storage.py`
 - `tests/test_models.py`
 - `tests/test_account.py`
 - `tests/test_order_service.py`
+- `tests/test_market_data.py`
+- `tests/test_storage.py`
+- `memory-bank/market-data-interface-design.md`
 - `memory-bank/task.md`
 
 ## Visual/Browser Findings

@@ -42,7 +42,7 @@ SCHEMA_STATEMENTS: tuple[str, ...] = (
         price REAL NOT NULL,
         amount REAL NOT NULL,
         fee REAL NOT NULL,
-        timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        timestamp INTEGER NOT NULL DEFAULT (strftime('%s','now') * 1000),
         FOREIGN KEY (order_id) REFERENCES orders(id)
     );
     """,
@@ -96,6 +96,7 @@ INDEX_STATEMENTS: tuple[str, ...] = (
     "CREATE INDEX IF NOT EXISTS idx_positions_symbol ON positions(symbol);",
     "CREATE INDEX IF NOT EXISTS idx_candles_symbol_time ON candles(symbol, timeframe, timestamp);",
     "CREATE INDEX IF NOT EXISTS idx_candles_timestamp ON candles(timestamp);",
+    "CREATE INDEX IF NOT EXISTS idx_trades_order_id ON trades(order_id);",
 )
 
 

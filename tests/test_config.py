@@ -88,6 +88,26 @@ risk:
         load_config(config_path=config_file, env_path=tmp_path / ".env")
 
 
+def test_load_config_rejects_non_sqlite_runtime_write_target(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path,
+) -> None:
+    for env_name in ("LOG_LEVEL", "DATABASE_PATH", "EXCHANGE_API_KEY", "EXCHANGE_API_SECRET"):
+        monkeypatch.delenv(env_name, raising=False)
+
+    config_file = tmp_path / "config.yaml"
+    config_file.write_text(
+        """
+market_data:
+  runtime_write_target: csv
+        """.strip(),
+        encoding="utf-8",
+    )
+
+    with pytest.raises(ConfigValidationError, match="runtime_write_target"):
+        load_config(config_path=config_file, env_path=tmp_path / ".env")
+
+
 def test_load_strategies_config_rejects_invalid_sma_window(tmp_path) -> None:
     strategies_file = tmp_path / "strategies.yaml"
     strategies_file.write_text(

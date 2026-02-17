@@ -211,25 +211,7 @@ class OrderService:
                     raise OrderServiceError("cannot consume funds: order price is None")
                 funds_to_consume = filled_delta * order.price
                 base_currency = self._extract_quote_currency(order.symbol)
-                
-                # Consume from frozen funds (reduce both frozen and balance)
-                try:
-                    account = self._account_service.get_account(base_currency)
-                    if account.frozen < funds_to_consume:
-                        raise OrderServiceError("insufficient frozen funds to consume")
-                    
-                    # Manually update account: reduce frozen and balance
-                    with tx:
-                        tx.execute(
-                            """
-                            UPDATE accounts
-                            SET frozen = frozen - ?, balance = balance - ?, updated_at = CURRENT_TIMESTAMP
-                            WHERE currency = ?;
-                            """,
-                            (funds_to_consume, funds_to_consume, base_currency),
-                        )
-                except Exception as e:
-                    raise OrderServiceError(f"failed to consume funds for filled portion: {e}") from e
+                self._consume_frozen_funds(tx, base_currency, funds_to_consume)
 
             # Update database
             timestamp = int(time.time() * 1000)
@@ -326,3 +308,23 @@ class OrderService:
         }
         return new in valid_transitions.get(current, set())
 
+    def _consume_frozen_funds(self, tx, currency: str, amount: float) -> None:
+        """Consume frozen funds (reduce frozen and balance) for filled buy orders."""
+        try:
+            account = self._account_service.get_account(currency)
+        except Exception as exc:
+            raise OrderServiceError(f"failed to load account: {exc}") from exc
+
+        if amount <= 0:
+            raise OrderServiceError("consumed funds must be > 0")
+        if account.frozen < amount:
+            raise OrderServiceError("insufficient frozen funds to consume")
+
+        tx.execute(
+            """
+            UPDATE accounts
+            SET frozen = frozen - ?, balance = balance - ?, updated_at = CURRENT_TIMESTAMP
+            WHERE currency = ?;
+            """,
+            (amount, amount, currency),
+        )
