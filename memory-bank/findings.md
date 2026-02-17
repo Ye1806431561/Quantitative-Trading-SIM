@@ -18,10 +18,9 @@
     - Python implementation
 -->
 <!-- Captured from user request -->
-- 阅读 `memory-bank/` 全部文档后，执行 `implementation-plan.md` 第 10 步（定义领域模型与校验规则）。
-- 第 10 步内容：为账户、订单、交易、持仓、K 线、策略运行记录建立领域模型与校验规则，覆盖必填、数值范围、枚举状态、时间戳关系。
-- 未获得验证通过前，不进入第 11 步。
-- 验证通过后，需要联动更新 memory-bank 文档（`progress.md`、`architecture.md`、`findings.md`、`requirements-traceability-checklist.md`、`task.md`）。
+- 阅读 `memory-bank/` 全部文档后，执行 `implementation-plan.md` 第 11 步（账户初始化与余额管理）。
+- 第 11 步内容：实现 `AccountService`，支持多币种账户初始化、余额冻结/释放、持仓恢复与总资产计算。
+- 验证通过后，更新 `progress.md` 等文档，准备进入第 12 步（订单持久化）。
 
 ## Research Findings
 <!-- 
@@ -40,6 +39,8 @@
 - 新增 `tests/test_models.py` 覆盖正反例 14 项；全量测试 `33 passed` 使用 `PYTHONPATH=. ./.venv/bin/pytest -q`（2026-02-17）。
 - Step 10 验收通过后仍需保持“未开始第 11 步”边界。
 - **Step 11 验证发现（2026-02-17）**：`database.py` 使用 `detect_types=sqlite3.PARSE_DECLTYPES` 打开连接，导致 `TIMESTAMP DEFAULT CURRENT_TIMESTAMP` 列被自动解析为 `datetime.datetime` 对象而非字符串或数值。`require_timestamp()` 原先仅接受 `int/float`，引发 `DomainValidationError`。修复后 `require_timestamp()` 兼容数值、`datetime` 对象和 ISO 格式字符串三种来源，全量测试 38 passed。
+- `AccountService` 的 `initialize_accounts` 必须也是幂等的，测试已覆盖（`test_initialize_accounts_is_idempotent`）。
+- `compute_total_assets` 依赖 `positions` 表恢复，验证了 `load_positions` 的正确性。
 
 ## Technical Decisions
 <!-- 

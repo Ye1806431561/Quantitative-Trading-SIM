@@ -1,8 +1,8 @@
 # Architecture Notes
 
 ## 当前阶段定位（2026-02-17）
-- 仓库已完成 `implementation-plan.md` Phase 0 第 1-7 条，Phase 1 第 8-11 条：需求追踪、范围收敛、骨架目录、依赖锁定、配置模板与优先级/校验规则、日志方案、数据库生命周期、核心表结构、领域模型与校验规则、账户初始化与余额管理。
-- 当前处于"Phase 1 进行中、待进入第 12 步"阶段：账户服务已就绪（含持仓恢复与总资产估值），订单持久化接口尚未开始。
+- 仓库已完成 `implementation-plan.md` Phase 0 第 1-7 条，Phase 1 第 8-11 条：...账户初始化与余额管理。
+- 当前处于"Phase 1 进行中、待进入第 12 步"阶段：账户服务已通过验收（`AccountService`），订单持久化接口尚未开始。
 - 最小交付范围仍锁定为 CLI + 模拟盘（回测与实时模拟），Web 能力保留为可选项且暂不交付。
 - **第 11 步验证发现与修复**：`require_timestamp()` 原先仅接受数值类型，但 SQLite `PARSE_DECLTYPES` 将 `TIMESTAMP` 列解析为 `datetime` 对象，导致测试失败。已修复 `src/core/validation.py` 兼容三种时间戳来源（数值、`datetime` 对象、ISO 字符串），全量测试 38 passed。
 
