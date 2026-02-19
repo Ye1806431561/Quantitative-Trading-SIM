@@ -108,6 +108,26 @@ market_data:
         load_config(config_path=config_file, env_path=tmp_path / ".env")
 
 
+def test_load_config_rejects_non_sqlite_backtest_data_read_source(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path,
+) -> None:
+    for env_name in ("LOG_LEVEL", "DATABASE_PATH", "EXCHANGE_API_KEY", "EXCHANGE_API_SECRET"):
+        monkeypatch.delenv(env_name, raising=False)
+
+    config_file = tmp_path / "config.yaml"
+    config_file.write_text(
+        """
+backtest:
+  data_read_source: csv
+        """.strip(),
+        encoding="utf-8",
+    )
+
+    with pytest.raises(ConfigValidationError, match="data_read_source"):
+        load_config(config_path=config_file, env_path=tmp_path / ".env")
+
+
 def test_load_strategies_config_rejects_invalid_sma_window(tmp_path) -> None:
     strategies_file = tmp_path / "strategies.yaml"
     strategies_file.write_text(

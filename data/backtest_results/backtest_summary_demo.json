@@ -1,0 +1,34 @@
+{
+  "basic_info": {
+    "symbol": "BTC/USDT",
+    "timeframe": "1h",
+    "data_source": "sqlite",
+    "bars_processed": 720
+  },
+  "capital": {
+    "initial_capital": 10000.0,
+    "final_value": 12500.0,
+    "pnl": 2500.0,
+    "total_return_pct": 25.0
+  },
+  "trade_statistics": {
+    "total_trades": 10,
+    "won_trades": 7,
+    "lost_trades": 3,
+    "win_rate": 70.0,
+    "profit_factor": 2.5,
+    "avg_profit": 500.0,
+    "avg_loss": -200.0,
+    "max_profit": 1000.0,
+    "max_loss": -400.0
+  },
+  "risk_metrics": {
+    "sharpe_ratio": 1.8,
+    "max_drawdown_pct": 15.5,
+    "max_drawdown_duration_days": 7
+  },
+  "returns_analysis": {
+    "total_return": 0.25,
+    "avg_return": 0.0035
+  }
+}

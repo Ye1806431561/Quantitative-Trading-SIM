@@ -1,11 +1,13 @@
 # Architecture Notes
 
-## 当前阶段定位（2026-02-17）
-- 仓库已完成 `implementation-plan.md` Phase 0 第 1-7 条，Phase 1 第 8-15 条代码落地。
-- 当前处于“Phase 1 进行中、待验证第 15 步”阶段：历史 K 线下载与 SQLite 落库已实现，等待用户测试确认后进入第 16 步。
+## 当前阶段定位（2026-02-19）
+
+- 仓库已完成 `implementation-plan.md` Phase 0 第 1-7 条，Phase 1 第 8-16 条，Phase 2 第 17-24 条与 Phase 3 第 25-28 条代码落地。
+- 当前处于"Phase 3 推进、第 28 步已实现待验证"阶段：回测结果导出（CSV/JSON）已落地，等待用户验证；第 29 步尚未开始。
 - 最小交付范围仍锁定为 CLI + 模拟盘（回测与实时模拟），Web 能力保留为可选项且暂不交付。
 - **第 11 步验证发现与修复**：`require_timestamp()` 原先仅接受数值类型，但 SQLite `PARSE_DECLTYPES` 将 `TIMESTAMP` 列解析为 `datetime` 对象，导致测试失败。已修复 `src/core/validation.py` 兼容三种时间戳来源（数值、`datetime` 对象、ISO 字符串），全量测试 38 passed。
 - **第 12 步实现与修复**：实现订单持久化服务（`OrderService`），修复 `orders` 表时间戳字段类型（`TIMESTAMP` → `INTEGER`），实现完整的订单状态机与资金管理（冻结/消耗/释放），全量测试 59 passed。
+- **第 28 步实现**：实现回测结果导出模块（`BacktestResultExporter`），支持摘要报告与资金曲线的 CSV/JSON 导出，符合数据路径约束（CSV/JSON 仅用于 export/backup），全量测试 16 passed（回测模块）。
 
 ## 文件作用说明（`memory-bank/`）
 
@@ -45,6 +47,10 @@
 - 作用：第 14 步接口设计文档，记录交易所选择、限流、重试、失败告知与数据路径约束。
 - 依赖关系：为 `src/data/market*.py` 的实现与 `tests/test_market_data.py` 的验收场景提供设计基线。
 
+### `memory-bank/strategy-interface-lifecycle-design.md`
+- 作用：第 25 步接口设计文档，记录策略生命周期契约、状态守卫、最小示例与验收映射。
+- 依赖关系：为 `src/strategies/base.py`、`src/live/simulator.py` 与 `tests/test_strategies.py` 提供设计基线。
+
 ## 文档关系与执行链路
 1. `product-requirement-document.md` 定义“要做什么”。
 2. `implementation-plan.md` 定义“按什么顺序做、如何验收”。
@@ -53,15 +59,26 @@
 5. `findings.md` 记录“为什么这样做、遇到什么问题、依据是什么”。
 6. `architecture.md` 解释“上述文档如何共同构成当前架构基线”。
 
-## 工程骨架与基础实现文件作用（第 3-15 步）
-- `src/core/*.py`：核心业务域实现入口（账户、订单、撮合、数据库、领域模型校验）；其中 `database.py` 已落地生命周期管理与 schema 初始化（六表、约束、索引，`orders`/`trades` 时间戳字段使用毫秒整数），`enums.py`/`validation.py`/`account.py`/`order.py`/`trade.py`/`position.py`/`candle.py`/`strategy_run.py` 已完成领域模型与校验规则（`validation.py` 已修复 `require_timestamp()` 兼容 SQLite `datetime` 对象），`account_service.py` 已实现账户初始化、余额管理、持仓恢复与总资产估值，`order_service.py` 已实现订单持久化接口（创建、查询、状态更新、撤销）与完整的资金管理（冻结/消耗/释放），`trade_service.py` 已实现成交写入与订单关联（含手续费、资金消耗与状态更新）；`matching.py` 等其余模块为后续 Phase 1-2 承接点。
+## 工程骨架与基础实现文件作用（第 3-26 步）
+- `src/core/*.py`：核心业务域实现入口（账户、订单、撮合、数据库、领域模型校验）；其中 `database.py` 已落地生命周期管理与 schema 初始化（六表、约束、索引，`orders`/`trades` 时间戳字段使用毫秒整数），`enums.py`/`validation.py`/`account.py`/`order.py`/`trade.py`/`position.py`/`candle.py`/`strategy_run.py` 已完成领域模型与校验规则（`validation.py` 已修复 `require_timestamp()` 兼容 SQLite `datetime` 对象），`account_service.py` 已实现账户初始化、余额管理、持仓恢复与总资产估值，`order_service.py` 已实现订单持久化接口（创建、查询、状态更新、撤销）与完整的资金管理（冻结/消耗/释放），`trade_service.py` 已实现成交写入与订单关联（含手续费、资金消耗与状态更新），`matching.py` 已实现第 19 步市价单撮合（最新价成交、账户与持仓同步），`limit_matching.py` + `limit_settlement.py` 已实现第 20 步限价队列管理与触发撮合，`stop_trigger.py` 已实现第 21 步止损/止盈触发机制与状态联动，`execution_cost.py` 已实现第 22 步统一手续费/滑点计算（Maker/Taker + 方向性滑点 + 限价边界保护），`order_state_machine.py` 已实现第 23 步统一订单状态机与合法流转表，`risk.py` 已实现第 24 步下单前风控拦截（单笔仓位、总仓位、最大回撤）。
 - `src/data/market.py`：市场数据接口实现（交易所选择、限流、重试、失败告知），承接 Phase 1 第 14 条。
 - `src/data/market_policy.py`：市场数据配置与策略约束（`RetryPolicy`、运行态写入目标校验）。
 - `src/data/market_retry.py`：本地限流器与错误分类（限流类/可重试类/不可重试类）。
-- `src/data/storage.py`：历史 K 线下载与存储实现（`HistoricalCandleStorage`），提供下载落库与按 `symbol/timeframe/time range` 查询能力（第 15 步）。
-- `src/strategies/*.py`：策略接口与内置策略占位，用于承接 Phase 3。
-- `src/backtest/*.py`：回测引擎与分析器占位，用于承接 Phase 3。
-- `src/live/*.py`：实时模拟主循环占位，用于承接 Phase 3。
+- `src/data/storage.py`：历史 K 线下载、缓存与去重存储实现（`HistoricalCandleStorage`），提供下载落库、缓存命中与按 `symbol/timeframe/time range` 查询能力（第 15-16 步）。
+- `src/data/feed.py`：第 26 步 SQLite→Pandas 数据馈送桥接，实现回测数据切片查询与 `backtrader.feeds.PandasData` 适配。
+- `src/data/realtime_market.py`：实时行情读取服务实现（最新价/深度/K 线），提供超时控制与错误兜底（第 17 步）。
+- `src/data/realtime_payloads.py`：实时行情统一返回结构与载荷归一化工具，确保三类接口结构一致（第 17 步）。
+- `src/strategies/base.py`：第 25 步策略生命周期接口实现（初始化/运行/停止/订单回调/成交回调）与状态守卫。
+- `src/strategies/lifecycle_demo_strategy.py`：第 25 步最小示例策略，实现生命周期钩子触发记录。
+- `src/strategies/*.py`（其余）：内置策略占位，用于承接第 30-33 步。
+- `src/backtest/engine.py`：第 26-27 步 Backtrader 回测引擎实现（`BacktestEngine`），负责 Cerebro 装配、策略执行、标准分析器挂载与统一结果输出（`BacktestRunResult` 包含基础统计 + 5 个分析器输出）。
+- `src/backtest/analyzers.py`：第 27 步分析器挂载模块（`AnalyzerMount`），负责挂载 5 个标准分析器（Sharpe、DrawDown、TradeAnalyzer、Returns、TimeReturn）并提取结果。
+- `src/backtest/result_models.py`：第 27 步回测结果数据模型（`BacktestRunResult`、`TradeStatistics`、`RiskMetrics`、`ReturnsAnalysis`），定义统一的回测输出结构。
+- `src/backtest/result_builder.py`：第 27 步分析器结果转换器（`AnalyzerResultBuilder`），负责将 Backtrader 原始分析器输出转换为统一数据模型。
+- `src/backtest/exporter.py`：第 28 步回测结果导出模块（`BacktestResultExporter`），提供摘要报告与资金曲线的 CSV/JSON 导出能力，支持自定义文件名前缀与自动创建输出目录。
+- `src/live/price_service.py`：价格服务实现（第 18 步），负责最新价驱动的持仓评估与资产估值。
+- `src/live/simulator.py`：第 25 步生命周期驱动器 `StrategyLifecycleDriver`，用于触发策略生命周期回调（非第 29 步实时主循环）。
+- `src/live/*.py`（其余）：实时模拟扩展占位，用于承接第 29 步及后续。
 - `src/utils/config.py`：配置加载编排层；负责执行 `默认值 < YAML < 环境变量` 的合并顺序，并提供统一入口。
 - `src/utils/config_defaults.py`：配置默认值与环境变量映射定义层；集中维护默认参数与 env 覆盖路径。
 - `src/utils/config_validation.py`：配置校验层；负责主配置与策略配置的类型、范围、关系约束校验。
@@ -79,6 +96,23 @@
 - `tests/test_trade_service.py`：第 13 步成交记录测试（部分/全量成交、overfill 拒绝、订单关联），用于支撑 Phase 1 第 13 条自动化验证。
 - `tests/test_market_data.py`：第 14 步市场数据测试（交易所选择、限流重试、失败告知、SQLite 写入目标约束），用于支撑 Phase 1 第 14 条自动化验证。
 - `tests/test_storage.py`：第 15 步历史数据测试（分页下载落库、时间范围查询、时间序校验、参数校验），用于支撑 Phase 1 第 15 条自动化验证。
+- `tests/test_realtime_market_data.py`：第 17 步实时行情测试（统一结构、超时、错误回退），用于支撑 Phase 2 第 17 条自动化验证。
+- `tests/test_price_service.py`：第 18 步价格服务测试（估值手算一致、缺价回退与报错），用于支撑 Phase 2 第 18 条自动化验证。
+- `tests/test_matching.py`：第 19 步市价撮合测试（固定价格序列可复算、账户与持仓同步、异常边界），用于支撑 Phase 2 第 19 条自动化验证。
+- `tests/test_limit_matching.py`：第 20 步限价撮合测试（价格跨越触发、未跨越保持挂单、价格-时间优先级），用于支撑 Phase 2 第 20 条自动化验证。
+- `tests/test_stop_trigger.py`：第 21 步止损/止盈触发测试（阈值触发、未触发保持挂单、状态联动、库存预检），用于支撑 Phase 2 第 21 条自动化验证。
+- `tests/test_execution_costs.py`：第 22 步手续费与滑点测试（Maker/Taker 费率、方向性滑点、限价边界保护、成交写库），用于支撑 Phase 2 第 22 条自动化验证。
+- `tests/test_order_state_machine.py`：第 23 步订单状态机测试（合法流转表、非法流转拒绝、服务级路径），用于支撑 Phase 2 第 23 条自动化验证。
+- `tests/test_risk_controls.py`：第 24 步风控测试（单笔仓位超限、总仓位超限、最大回撤超限拒单），用于支撑 Phase 2 第 24 条自动化验证。
+- `tests/test_strategies.py`：第 25 步策略生命周期测试（回调顺序、状态守卫、重复初始化拒绝），用于支撑 Phase 3 第 25 条自动化验证。
+- `tests/test_backtest_engine.py`：第 26 步回测引擎测试（小样本基础统计、非 SQLite 读取拒绝、无数据区间报错），用于支撑 Phase 3 第 26 条自动化验证。
+- `tests/test_backtest_analyzers.py`：第 27 步分析器测试（5 个分析器输出完整性、无交易场景零值、Sharpe 边界情况、时间序列格式、字段完整性），用于支撑 Phase 3 第 27 条自动化验证。
+- `tests/test_backtest_exporter.py`：第 28 步导出器测试（摘要 JSON/CSV 创建、资金曲线 JSON/CSV 创建、一键导出、文件名前缀、自动创建目录、None 值处理），用于支撑 Phase 3 第 28 条自动化验证。
+- `tests/test_order_state_machine.py`：第 23 步订单状态机测试（合法流转表、非法流转、服务层关键路径），用于支撑 Phase 2 第 23 条自动化验证。
+- `tests/test_risk_controls.py`：第 24 步风控测试（单笔仓位拦截、总仓位拦截、最大回撤拦截），用于支撑 Phase 2 第 24 条自动化验证。
+- `tests/test_strategies.py`：第 25 步生命周期测试（回调顺序、状态守卫），用于支撑 Phase 3 第 25 条自动化验证。
+- `tests/test_backtest_engine.py`：第 26 步回测引擎测试（SQLite 数据读取、PandasData 馈送、基础统计输出、非 SQLite 读取拒绝），用于支撑 Phase 3 第 26 条自动化验证。
+- `tests/test_backtest_analyzers.py`：第 27 步标准分析器测试（5 个分析器输出完整性、无交易边界情况、Sharpe 比率边界情况、时间序列格式、字段完整性），用于支撑 Phase 3 第 27 条自动化验证。
 - `tests/*.py`（其余）：测试模块占位，用于承接 Phase 4 第 39 条。
 - `requirements.txt`：当前仓库依赖清单入口（安装/CI 统一来源）；后续若恢复严格锁定版本，应与 Phase 0 第 4 条验收口径保持一致。
 - `README.md`：补充第 7 步日志方案说明与手工演练步骤，作为日志策略落地说明文档。
@@ -124,3 +158,70 @@
   - `query_candles()` 支持按 `symbol/timeframe/time range` 查询并保证 `timestamp ASC` 返回。
   - 新增命名规范方法 `build_dataset_name()`，统一数据集标识（示例：`BTC_USDT_1h`）。
   - 新增 `tests/test_storage.py` 覆盖分页下载、落库、查询时间序与异常输入校验。
+- 第 16 步已完成（待用户测试验证）：
+  - `src/core/database.py` 新增 `candle_download_cache` 表与 `idx_candle_cache_lookup` 索引，用于历史请求缓存元数据持久化。
+  - `src/data/storage.py` 新增缓存命中逻辑：重复请求同一 `symbol/timeframe/time range` 时直接命中缓存并跳过重复下载。
+  - K 线写入改为 `INSERT OR IGNORE`，基于 `candles` 表唯一约束实现去重写入；`downloaded_count` 表示本次实际新增行数。
+  - `tests/test_storage.py` 新增用例覆盖重复请求缓存命中、重叠区间去重、跨实例缓存命中。
+- 第 17 步已完成（待用户测试验证）：
+  - `src/data/realtime_market.py` 新增 `RealtimeMarketDataService`，统一实时接口：`get_latest_price` / `get_depth` / `get_klines`。
+  - 增加请求级超时保护：超时返回统一快照并标记 `timed_out=True`。
+  - 增加错误兜底：优先回退最近成功数据；无缓存时返回统一空结构与错误信息。
+  - `src/data/realtime_payloads.py` 定义 `RealtimeMarketSnapshot` 与 payload 归一化，确保三类接口字段结构一致。
+  - `tests/test_realtime_market_data.py` 覆盖结构一致性、超时行为和回退行为。
+- 第 18 步已完成（待用户测试验证）：
+  - `src/live/price_service.py` 新增 `PriceService`，以实时最新价评估持仓并输出组合估值结果。
+  - 持仓评估会回写 `positions.current_price` 与 `positions.unrealized_pnl`，保证崩溃恢复后估值状态一致。
+  - 最新价缺失时回退 `positions.current_price`；两者都缺失时显式报错，避免静默估值偏差。
+  - `tests/test_price_service.py` 覆盖固定行情手算一致、缺价回退与缺价报错场景。
+- 第 19 步已完成（待用户测试验证）：
+  - `src/core/matching.py` 新增 `MatchingEngine`，实现市价单按最新价即时成交（`execute_market_order`）。
+  - 撮合流程实现：创建市价单 → 状态推进到 `open` → 成交写入 `trades` → 状态收敛到 `filled`。
+  - 账户同步实现：买单增加基础币余额；卖单减少基础币余额并增加报价币余额。
+  - 持仓同步实现：买单新建/加仓并重算加权成本；卖单减仓并更新已实现/未实现盈亏。
+  - `tests/test_matching.py` 覆盖固定价格序列下结果可复算、缺价失败、卖出库存不足失败。
+- 第 20 步已完成并通过用户验证：
+  - `src/core/limit_matching.py` 新增 `LimitOrderMatchingEngine`，实现限价下单、挂单队列查询与按 symbol 触发撮合（`process_limit_order_queue`）。
+  - `src/core/limit_settlement.py` 新增 `LimitOrderSettlement`，封装限价成交后的账户与持仓结算。
+  - 触发规则实现：买单 `latest_price <= limit_price`，卖单 `latest_price >= limit_price`；未触发订单保持挂单。
+  - 队列规则实现：价格-时间优先级（买单高价优先，卖单低价优先，同价按创建时间）。
+  - `tests/test_limit_matching.py` 覆盖跨价触发、保持挂单与优先级行为，验证“价格跨越挂单价时订单正确成交或保持挂单”。
+- 第 21 步已完成（待用户测试验证）：
+  - `src/core/stop_trigger.py` 新增 `StopTriggerEngine`，实现止损/止盈订单创建与按 symbol 触发扫描（`process_trigger_orders`）。
+  - 触发规则实现：
+    - `STOP_LOSS`：卖单 `latest <= trigger`，买单 `latest >= trigger`
+    - `TAKE_PROFIT`：卖单 `latest >= trigger`，买单 `latest <= trigger`
+  - 触发后联动现有订单状态机：通过 `TradeService.record_trade()` 推进 `open -> filled/partially_filled`。
+  - 触发后联动账户/持仓更新：复用 `LimitOrderSettlement` 同步 `accounts` 与 `positions`。
+  - `tests/test_stop_trigger.py` 覆盖未触发保持挂单、止损/止盈触发成交、买向触发与库存预检失败场景。
+- 第 22 步已完成（待用户测试验证）：
+  - `src/core/execution_cost.py` 新增统一执行成本模型 `ExecutionCostProfile`，实现 Maker/Taker 费率与方向性滑点计算。
+  - `src/core/matching.py` 接入市价单 Taker 手续费与滑点，成交写库不再固定 `fee=0.0`。
+  - `src/core/limit_matching.py` 接入限价单 Maker 手续费与滑点，并通过限价边界保护避免突破限价。
+  - `src/core/stop_trigger.py` 接入触发单 Taker 手续费与滑点，成交写库不再固定 `fee=0.0`。
+  - `tests/test_execution_costs.py` 新增“已知参数可复算”测试，覆盖市价/限价/触发三类成交路径。
+- 第 23 步已完成（待用户测试验证）：
+  - `src/core/order_state_machine.py` 新增统一订单状态机与合法流转表（`pending/open/partially_filled/filled/canceled/rejected`，其中“新建”映射为 `pending`）。
+  - `src/core/order_service.py` 改为复用状态机校验流转，并将 `update_order_status(..., canceled)` 路由到 `cancel_order()`，避免冻结资金释放逻辑被绕过。
+  - `src/core/trade_service.py` 在写入成交后更新订单状态前新增状态机校验，防止非法状态落库。
+  - `tests/test_order_state_machine.py` 覆盖合法流转表逐条路径、非法流转拒绝与服务层关键路径。
+- 第 24 步已完成（待用户测试验证）：
+  - `src/core/risk.py` 新增统一风控模块 `RiskControl`，实现单笔仓位、总仓位、最大回撤三项下单前检查。
+  - `src/core/matching.py` / `src/core/limit_matching.py` / `src/core/stop_trigger.py` 接入风控前置校验，超限时拒绝下单并返回拒单原因。
+  - `tests/test_risk_controls.py` 新增三类拒单测试，验证超阈值交易会被拦截且不写入 `orders/trades`。
+- 第 25 步已完成（待用户测试验证）：
+  - `src/strategies/base.py` 新增 `LiveStrategy` 生命周期基类与 `StrategyContext`/`StrategyOrderEvent`/`StrategyTradeEvent`。
+  - `src/live/simulator.py` 新增 `StrategyLifecycleDriver`，驱动 `initialize/run/notify_order/notify_trade/stop` 回调链路。
+  - `src/strategies/lifecycle_demo_strategy.py` 新增 `LifecycleProbeStrategy`，作为最小示例策略验证生命周期触发。
+  - `tests/test_strategies.py` 覆盖回调顺序与状态守卫（未初始化运行拒绝、重复初始化拒绝）。
+- 第 26 步已完成并通过用户验证：
+  - `src/backtest/engine.py` 新增 `BacktestEngine`，集成 Backtrader Cerebro，支持单次回测运行并输出基础统计（初始资金、期末资金、收益率、样本条数）。
+  - `src/data/feed.py` 新增 `SQLitePandasFeedFactory`，实现 `candles` 表查询结果到 `pandas.DataFrame` 与 `PandasData` 的桥接。
+  - `src/utils/config_defaults.py` / `src/utils/config_validation.py` / `config/config.yaml` 新增并强制 `backtest.data_read_source=sqlite`，拒绝 CSV/Parquet 运行态读取。
+  - `tests/test_backtest_engine.py` 与 `tests/test_config.py` 新增第 26 步约束测试，验证"回测读取路径仅 SQLite"。
+- 第 27 步已完成（待用户测试验证）：
+  - `src/backtest/analyzers.py` 新增 `AnalyzerMount`，实现 5 个标准分析器挂载（Sharpe、DrawDown、TradeAnalyzer、Returns、TimeReturn）与结果提取。
+  - `src/backtest/engine.py` 扩展 `BacktestRunResult`，新增 3 个嵌套数据类（`TradeStatistics`、`RiskMetrics`、`ReturnsAnalysis`）与 4 个分析器字段。
+  - `BacktestEngine.run()` 更新为：挂载分析器 → 运行回测 → 提取结果 → 转换为统一结构。
+  - 新增 4 个转换方法处理边界情况：无交易返回零值、Sharpe 比率可能为 `None`、时间序列键转换为 ISO 字符串。
+  - `tests/test_backtest_analyzers.py` 新增 5 项验收测试，覆盖分析器输出完整性、边界情况与字段完整性。

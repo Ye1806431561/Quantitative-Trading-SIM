@@ -1,4 +1,4 @@
-"""Historical candle download and SQLite persistence (Phase 1 Step 15)."""
+"""Historical candle download, cache, and deduplicated SQLite persistence."""
 
 from __future__ import annotations
 
@@ -56,6 +56,7 @@ class HistoricalCandleStorage:
     def __init__(self, database: SQLiteDatabase, fetcher: CandleFetcher) -> None:
         self._database = database
         self._fetcher = fetcher
+        self._request_cache: set[tuple[str, str, int, int]] = set()
 
     def download_and_store(self, request: CandleDownloadRequest) -> CandleDownloadResult:
         """Download candles for a time range and persist them to SQLite."""
@@ -66,6 +67,17 @@ class HistoricalCandleStorage:
             request.end_timestamp,
         )
         batch_size = self._validate_batch_size(request.batch_size)
+        cache_key = (symbol, timeframe, start_timestamp, end_timestamp)
+
+        if self._is_range_cached(cache_key):
+            return CandleDownloadResult(
+                symbol=symbol,
+                timeframe=timeframe,
+                dataset_name=self.build_dataset_name(symbol, timeframe),
+                start_timestamp=start_timestamp,
+                end_timestamp=end_timestamp,
+                downloaded_count=0,
+            )
 
         downloaded_count = 0
         since = start_timestamp
@@ -87,8 +99,7 @@ class HistoricalCandleStorage:
                 end_timestamp=end_timestamp,
             )
             if candles:
-                self._insert_candles(candles)
-                downloaded_count += len(candles)
+                downloaded_count += self._insert_candles(candles)
 
             last_timestamp = int(ohlcv_rows[-1][0])
             if last_timestamp < since:
@@ -99,6 +110,7 @@ class HistoricalCandleStorage:
             if len(ohlcv_rows) < batch_size:
                 break
 
+        self._record_cached_range(cache_key)
         return CandleDownloadResult(
             symbol=symbol,
             timeframe=timeframe,
@@ -160,7 +172,7 @@ class HistoricalCandleStorage:
         normalized_symbol = "_".join(part for part in normalized_symbol.split("_") if part)
         return f"{normalized_symbol}_{timeframe.strip()}"
 
-    def _insert_candles(self, candles: list[Candle]) -> None:
+    def _insert_candles(self, candles: list[Candle]) -> int:
         payload = [
             (
                 candle.symbol,
@@ -175,13 +187,49 @@ class HistoricalCandleStorage:
             for candle in candles
         ]
         with self._database.transaction() as tx:
+            changes_before = tx.total_changes
             tx.executemany(
                 """
-                INSERT INTO candles(symbol, timeframe, timestamp, open, high, low, close, volume)
+                INSERT OR IGNORE INTO candles(symbol, timeframe, timestamp, open, high, low, close, volume)
                 VALUES (?, ?, ?, ?, ?, ?, ?, ?);
                 """,
                 payload,
             )
+            return tx.total_changes - changes_before
+
+    def _is_range_cached(self, cache_key: tuple[str, str, int, int]) -> bool:
+        if cache_key in self._request_cache:
+            return True
+
+        symbol, timeframe, start_timestamp, end_timestamp = cache_key
+        with self._database.transaction() as tx:
+            row = tx.execute(
+                """
+                SELECT 1 FROM candle_download_cache
+                WHERE symbol = ?
+                  AND timeframe = ?
+                  AND start_timestamp = ?
+                  AND end_timestamp = ?
+                LIMIT 1;
+                """,
+                (symbol, timeframe, start_timestamp, end_timestamp),
+            ).fetchone()
+        if row is None:
+            return False
+        self._request_cache.add(cache_key)
+        return True
+
+    def _record_cached_range(self, cache_key: tuple[str, str, int, int]) -> None:
+        symbol, timeframe, start_timestamp, end_timestamp = cache_key
+        with self._database.transaction() as tx:
+            tx.execute(
+                """
+                INSERT INTO candle_download_cache(symbol, timeframe, start_timestamp, end_timestamp) VALUES (?, ?, ?, ?)
+                ON CONFLICT(symbol, timeframe, start_timestamp, end_timestamp) DO UPDATE SET last_synced_at = CURRENT_TIMESTAMP;
+                """,
+                (symbol, timeframe, start_timestamp, end_timestamp),
+            )
+        self._request_cache.add(cache_key)
 
     @staticmethod
     def _validate_symbol(symbol: str) -> str:

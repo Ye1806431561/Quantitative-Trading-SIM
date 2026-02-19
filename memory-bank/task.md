@@ -17,22 +17,22 @@
 - [x] 12. Implement order persistence interfaces <!-- id: 11 -->
 - [x] 13. Implement trade recording & order association <!-- id: 12 -->
 - [x] 14. Design market data fetch interfaces <!-- id: 13 -->
-- [ ] 15. Implement historical candle download & storage <!-- id: 14 -->
-- [ ] 16. Add historical data caching & deduplication <!-- id: 15 -->
+- [x] 15. Implement historical candle download & storage <!-- id: 14 -->
+- [x] 16. Add historical data caching & deduplication <!-- id: 15 -->
 
 ## Phase 2: Matching, Risk & Market Data
-- [ ] 17. Implement real-time market data fetching <!-- id: 16 -->
-- [ ] 18. Implement pricing service <!-- id: 17 -->
-- [ ] 19. Implement market order matching logic <!-- id: 18 -->
-- [ ] 20. Implement limited order queue & matching <!-- id: 19 -->
-- [ ] 21. Implement stop-loss/take-profit triggers <!-- id: 20 -->
-- [ ] 22. Implement fee & slippage calculation <!-- id: 21 -->
-- [ ] 23. Implement order state machine <!-- id: 22 -->
-- [ ] 24. Implement risk control checks <!-- id: 23 -->
+- [x] 17. Implement real-time market data fetching <!-- id: 16 -->
+- [x] 18. Implement pricing service <!-- id: 17 -->
+- [x] 19. Implement market order matching logic <!-- id: 18 -->
+- [x] 20. Implement limited order queue & matching <!-- id: 19 -->
+- [x] 21. Implement stop-loss/take-profit triggers <!-- id: 20 -->
+- [x] 22. Implement fee & slippage calculation <!-- id: 21 -->
+- [x] 23. Implement order state machine <!-- id: 22 -->
+- [x] 24. Implement risk control checks <!-- id: 23 -->
 
 ## Phase 3: Strategies & Dual Engines
-- [ ] 25. Design strategy interface lifecycle <!-- id: 24 -->
-- [ ] 26. Integrate Backtrader engine <!-- id: 25 -->
+- [x] 25. Design strategy interface lifecycle <!-- id: 24 -->
+- [x] 26. Integrate Backtrader engine <!-- id: 25 -->
 - [ ] 27. Mount standard analyzers <!-- id: 26 -->
 - [ ] 28. Output backtest results <!-- id: 27 -->
 - [ ] 29. Implement real-time simulation loop <!-- id: 28 -->

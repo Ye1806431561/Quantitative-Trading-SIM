@@ -11,6 +11,7 @@ from src.core.account_service import AccountService
 from src.core.database import SQLiteDatabase
 from src.core.enums import OrderSide, OrderStatus, OrderType
 from src.core.order import Order
+from src.core.order_state_machine import can_transition
 
 
 class OrderServiceError(RuntimeError):
@@ -35,15 +36,8 @@ class OrderService:
         self._db = database
         self._account_service = account_service
 
-    # ------------------------------------------------------------------ #
-    # Order creation
-    # ------------------------------------------------------------------ #
     def create_order(self, request: CreateOrderRequest) -> Order:
-        """Create a new order with frozen funds (for buy orders).
-
-        Idempotent: if order_id already exists, return existing order.
-        """
-        # Validate request
+        """Create a new order and freeze quote funds for buy orders."""
         if not request.symbol or not request.symbol.strip():
             raise OrderServiceError("symbol must not be empty")
         if request.amount <= 0:
@@ -53,12 +47,10 @@ class OrderService:
         if request.price is not None and request.price <= 0:
             raise OrderServiceError("price must be > 0")
 
-        # Generate unique order ID
         order_id = self._generate_order_id()
         timestamp = int(time.time() * 1000)
 
         with self._db.transaction() as tx:
-            # Check if order already exists (idempotent)
             existing = tx.execute(
                 "SELECT id, symbol, type, side, price, amount, filled, status, created_at, updated_at "
                 "FROM orders WHERE id = ?;",
@@ -67,13 +59,8 @@ class OrderService:
             if existing is not None:
                 return Order.validate(dict(existing))
 
-            # Freeze funds for buy orders
             if request.side == OrderSide.BUY:
-                # Calculate required funds
                 if request.type == OrderType.MARKET:
-                    # For market orders, we need to estimate cost
-                    # In real scenario, we'd use current market price
-                    # For now, use price if provided, otherwise raise error
                     if request.price is None:
                         raise OrderServiceError(
                             "price must be provided for market buy orders in simulation"
@@ -82,14 +69,12 @@ class OrderService:
                 else:
                     required_funds = request.amount * request.price  # type: ignore
 
-                # Extract base currency from symbol (e.g., BTC/USDT -> USDT)
                 base_currency = self._extract_quote_currency(request.symbol)
                 try:
                     self._account_service.freeze_funds(base_currency, required_funds)
                 except Exception as e:
                     raise OrderServiceError(f"failed to freeze funds: {e}") from e
 
-            # Insert order
             tx.execute(
                 """
                 INSERT INTO orders(id, symbol, type, side, price, amount, filled, status, created_at, updated_at)
@@ -110,9 +95,6 @@ class OrderService:
 
         return self.get_order(order_id)
 
-    # ------------------------------------------------------------------ #
-    # Order queries
-    # ------------------------------------------------------------------ #
     def get_order(self, order_id: str) -> Order:
         """Retrieve order by ID."""
         with self._db.transaction() as tx:
@@ -159,9 +141,6 @@ class OrderService:
 
         return [Order.validate(dict(row)) for row in rows]
 
-    # ------------------------------------------------------------------ #
-    # Order status updates
-    # ------------------------------------------------------------------ #
     def update_order_status(
         self,
         order_id: str,
@@ -170,16 +149,17 @@ class OrderService:
     ) -> Order:
         """Update order status with state transition validation.
 
-        Valid transitions:
-        - PENDING -> OPEN, REJECTED
-        - OPEN -> PARTIALLY_FILLED, FILLED, CANCELED
-        - PARTIALLY_FILLED -> FILLED, CANCELED
-        
+        Valid transitions come from `order_state_machine.py`.
+
         For buy orders, when filled amount increases, the corresponding frozen funds
         are consumed (removed from both frozen and balance).
         """
+        if new_status == OrderStatus.CANCELED:
+            if filled is not None:
+                raise OrderServiceError("filled must be None when canceling an order")
+            return self.cancel_order(order_id)
+
         with self._db.transaction() as tx:
-            # Get current order
             row = tx.execute(
                 "SELECT id, symbol, type, side, price, amount, filled, status, created_at, updated_at "
                 "FROM orders WHERE id = ?;",
@@ -191,20 +171,17 @@ class OrderService:
             order = Order.validate(dict(row))
             current_status = order.status
 
-            # Validate state transition
-            if not self._is_valid_transition(current_status, new_status):
+            if not can_transition(current_status, new_status):
                 raise OrderServiceError(
                     f"invalid status transition: {current_status.value} -> {new_status.value}"
                 )
 
-            # Update filled amount if provided
             new_filled = filled if filled is not None else order.filled
             if new_filled < 0:
                 raise OrderServiceError("filled amount must be non-negative")
             if new_filled > order.amount:
                 raise OrderServiceError("filled amount cannot exceed order amount")
 
-            # Consume frozen funds for filled portion (buy orders only)
             if order.side == OrderSide.BUY and new_filled > order.filled:
                 filled_delta = new_filled - order.filled
                 if order.price is None:
@@ -213,7 +190,6 @@ class OrderService:
                 base_currency = self._extract_quote_currency(order.symbol)
                 self._consume_frozen_funds(tx, base_currency, funds_to_consume)
 
-            # Update database
             timestamp = int(time.time() * 1000)
             tx.execute(
                 """
@@ -227,12 +203,8 @@ class OrderService:
         return self.get_order(order_id)
 
     def cancel_order(self, order_id: str) -> Order:
-        """Cancel an order and release frozen funds.
-
-        Idempotent: if order is already canceled/filled/rejected, return current state.
-        """
+        """Cancel an order and release remaining frozen funds."""
         with self._db.transaction() as tx:
-            # Get current order
             row = tx.execute(
                 "SELECT id, symbol, type, side, price, amount, filled, status, created_at, updated_at "
                 "FROM orders WHERE id = ?;",
@@ -243,15 +215,12 @@ class OrderService:
 
             order = Order.validate(dict(row))
 
-            # Idempotent: already in terminal state
             if order.status in (OrderStatus.CANCELED, OrderStatus.FILLED, OrderStatus.REJECTED):
                 return order
 
-            # Validate cancellable
-            if order.status not in (OrderStatus.PENDING, OrderStatus.OPEN, OrderStatus.PARTIALLY_FILLED):
+            if not can_transition(order.status, OrderStatus.CANCELED):
                 raise OrderServiceError(f"cannot cancel order in status: {order.status.value}")
 
-            # Release frozen funds for buy orders
             if order.side == OrderSide.BUY:
                 unfilled_amount = order.amount - order.filled
                 if unfilled_amount > 0:
@@ -264,7 +233,6 @@ class OrderService:
                     except Exception as e:
                         raise OrderServiceError(f"failed to release funds: {e}") from e
 
-            # Update status to CANCELED
             timestamp = int(time.time() * 1000)
             tx.execute(
                 """
@@ -277,9 +245,6 @@ class OrderService:
 
         return self.get_order(order_id)
 
-    # ------------------------------------------------------------------ #
-    # Internal helpers
-    # ------------------------------------------------------------------ #
     @staticmethod
     def _generate_order_id() -> str:
         """Generate unique order ID."""
@@ -294,19 +259,6 @@ class OrderService:
         if len(parts) != 2:
             raise OrderServiceError(f"invalid symbol format: {symbol}")
         return parts[1].strip()
-
-    @staticmethod
-    def _is_valid_transition(current: OrderStatus, new: OrderStatus) -> bool:
-        """Validate order status transition."""
-        valid_transitions = {
-            OrderStatus.PENDING: {OrderStatus.OPEN, OrderStatus.REJECTED},
-            OrderStatus.OPEN: {OrderStatus.PARTIALLY_FILLED, OrderStatus.FILLED, OrderStatus.CANCELED},
-            OrderStatus.PARTIALLY_FILLED: {OrderStatus.FILLED, OrderStatus.CANCELED},
-            OrderStatus.FILLED: set(),
-            OrderStatus.CANCELED: set(),
-            OrderStatus.REJECTED: set(),
-        }
-        return new in valid_transitions.get(current, set())
 
     def _consume_frozen_funds(self, tx, currency: str, amount: float) -> None:
         """Consume frozen funds (reduce frozen and balance) for filled buy orders."""

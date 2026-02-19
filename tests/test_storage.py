@@ -1,4 +1,4 @@
-"""Tests for historical candle download and SQLite storage (Phase 1 Step 15)."""
+"""Tests for historical candle download, caching, and deduplicated storage."""
 
 from __future__ import annotations
 
@@ -88,6 +88,115 @@ def test_download_and_store_writes_candles_and_returns_summary(storage) -> None:
             ("BTC/USDT", "1h"),
         ).fetchone()[0]
     assert count == 3
+
+
+def test_download_and_store_uses_cache_on_repeated_identical_request(storage) -> None:
+    service, fetcher, database = storage
+    fetcher.set_pages(
+        [
+            [
+                [1000, 100.0, 105.0, 95.0, 101.0, 10.0],
+                [2000, 101.0, 106.0, 99.0, 104.0, 11.0],
+            ]
+        ]
+    )
+    request = CandleDownloadRequest(
+        symbol="BTC/USDT",
+        timeframe="1h",
+        start_timestamp=1000,
+        end_timestamp=2000,
+        batch_size=10,
+    )
+
+    first_result = service.download_and_store(request)
+    calls_after_first = len(fetcher.calls)
+
+    # Should be ignored if cache is not checked and fetch is called again.
+    fetcher.set_pages([[[1000, 999.0, 1000.0, 998.0, 999.0, 1.0]]])
+    second_result = service.download_and_store(request)
+
+    assert first_result.downloaded_count == 2
+    assert second_result.downloaded_count == 0
+    assert len(fetcher.calls) == calls_after_first
+
+    with database.transaction() as tx:
+        count = tx.execute(
+            "SELECT COUNT(*) FROM candles WHERE symbol = ? AND timeframe = ?;",
+            ("BTC/USDT", "1h"),
+        ).fetchone()[0]
+    assert count == 2
+
+
+def test_download_and_store_deduplicates_overlapping_rows(storage) -> None:
+    service, fetcher, database = storage
+    first_request = CandleDownloadRequest(
+        symbol="BTC/USDT",
+        timeframe="1h",
+        start_timestamp=1000,
+        end_timestamp=2000,
+        batch_size=10,
+    )
+    fetcher.set_pages(
+        [
+            [
+                [1000, 100.0, 105.0, 95.0, 101.0, 10.0],
+                [2000, 101.0, 106.0, 99.0, 104.0, 11.0],
+            ]
+        ]
+    )
+    service.download_and_store(first_request)
+
+    second_request = CandleDownloadRequest(
+        symbol="BTC/USDT",
+        timeframe="1h",
+        start_timestamp=2000,
+        end_timestamp=3000,
+        batch_size=10,
+    )
+    fetcher.set_pages(
+        [
+            [
+                [2000, 201.0, 206.0, 199.0, 204.0, 21.0],
+                [3000, 204.0, 208.0, 203.0, 207.0, 12.0],
+            ]
+        ]
+    )
+    result = service.download_and_store(second_request)
+
+    assert result.downloaded_count == 1
+    with database.transaction() as tx:
+        count = tx.execute(
+            "SELECT COUNT(*) FROM candles WHERE symbol = ? AND timeframe = ?;",
+            ("BTC/USDT", "1h"),
+        ).fetchone()[0]
+    assert count == 3
+
+
+def test_cache_hit_survives_new_storage_instance(tmp_path) -> None:
+    database = SQLiteDatabase(tmp_path / "persistent_cache.db")
+    database.initialize_schema()
+
+    first_fetcher = ScriptedFetcher(
+        [[[1000, 100.0, 105.0, 95.0, 101.0, 10.0], [2000, 101.0, 106.0, 99.0, 104.0, 11.0]]]
+    )
+    first_service = HistoricalCandleStorage(database=database, fetcher=first_fetcher)
+    request = CandleDownloadRequest(
+        symbol="BTC/USDT",
+        timeframe="1h",
+        start_timestamp=1000,
+        end_timestamp=2000,
+        batch_size=10,
+    )
+    first_service.download_and_store(request)
+
+    second_fetcher = ScriptedFetcher([])
+    second_service = HistoricalCandleStorage(database=database, fetcher=second_fetcher)
+    result = second_service.download_and_store(request)
+
+    assert result.downloaded_count == 0
+    assert second_fetcher.calls == []
+
+    database.close()
 
 
 def test_query_candles_filters_time_range_and_orders_ascending(storage) -> None:

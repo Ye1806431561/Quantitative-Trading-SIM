@@ -32,6 +32,10 @@ class AccountService:
         self._db = database
         self._base_currency = base_currency
 
+    @property
+    def base_currency(self) -> str:
+        return self._base_currency
+
     @classmethod
     def from_config(cls, database: SQLiteDatabase, config: Mapping[str, object]) -> "AccountService":
         account_cfg = config.get("account")

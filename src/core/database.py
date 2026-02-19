@@ -90,12 +90,26 @@ SCHEMA_STATEMENTS: tuple[str, ...] = (
         UNIQUE(symbol, timeframe, timestamp)
     );
     """,
+    """
+    CREATE TABLE IF NOT EXISTS candle_download_cache (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        symbol TEXT NOT NULL,
+        timeframe TEXT NOT NULL,
+        start_timestamp INTEGER NOT NULL,
+        end_timestamp INTEGER NOT NULL,
+        last_synced_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        UNIQUE(symbol, timeframe, start_timestamp, end_timestamp),
+        CHECK(start_timestamp >= 0),
+        CHECK(end_timestamp >= start_timestamp)
+    );
+    """,
 )
 
 INDEX_STATEMENTS: tuple[str, ...] = (
     "CREATE INDEX IF NOT EXISTS idx_positions_symbol ON positions(symbol);",
     "CREATE INDEX IF NOT EXISTS idx_candles_symbol_time ON candles(symbol, timeframe, timestamp);",
     "CREATE INDEX IF NOT EXISTS idx_candles_timestamp ON candles(timestamp);",
+    "CREATE INDEX IF NOT EXISTS idx_candle_cache_lookup ON candle_download_cache(symbol, timeframe, start_timestamp, end_timestamp);",
     "CREATE INDEX IF NOT EXISTS idx_trades_order_id ON trades(order_id);",
 )
 

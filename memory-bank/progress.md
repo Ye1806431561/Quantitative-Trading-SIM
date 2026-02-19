@@ -485,3 +485,612 @@
 ### 交接备注
 - 第 15 步实现仅覆盖“下载 + 写入 + 查询”能力，未实现缓存命中与去重策略（保持第 16 步边界）。
 - 当前写入路径仍为 SQLite `candles` 表，未引入 CSV/Parquet 运行态写入。
+
+## 2026-02-17（第 16 步）
+
+### 本次目标
+- 执行 `implementation-plan.md` Phase 1 第 16 条：增加历史数据缓存与去重机制，避免重复下载/写入。
+
+### 已完成事项
+- 完整阅读并复核 `memory-bank/` 全部文档后开始实现第 16 步。
+- 更新 `src/data/storage.py`：
+  - 新增历史请求缓存命中逻辑（`symbol/timeframe/time range`）。
+  - 命中缓存时直接返回，不重复调用 `fetch_ohlcv`。
+  - K 线写入改为 `INSERT OR IGNORE`，依赖 `candles` 唯一约束做去重。
+  - `downloaded_count` 改为“本次实际新增记录数”，重复数据不重复计数。
+- 更新 `src/core/database.py`：
+  - 新增 `candle_download_cache` 表（缓存元数据）。
+  - 新增 `idx_candle_cache_lookup` 索引，支持缓存命中查询。
+- 扩展 `tests/test_storage.py`：
+  - 新增“重复同一请求命中缓存、不触发重复下载”用例。
+  - 新增“重叠区间请求只新增未落库数据”用例。
+  - 新增“新服务实例仍可命中 SQLite 持久化缓存”用例。
+- 本地自检结果：
+  - `PYTHONPATH=. ./.venv/bin/pytest -q tests/test_storage.py tests/test_database.py` → `19 passed`
+
+### 验收状态
+- Phase 1 第 16 步代码实现已完成，自动化测试通过。
+- 按你的要求，等待你执行并确认测试通过前，不启动第 17 步。
+
+### 交接备注
+- 第 16 步缓存与去重仅基于 SQLite（`candles` + `candle_download_cache`），未引入 CSV/Parquet 运行态路径。
+- 在你确认第 16 步通过前，保持第 17 步（实时行情拉取接口）未开始状态。
+
+## 2026-02-17（第 17 步）
+
+### 本次目标
+- 执行 `implementation-plan.md` Phase 2 第 17 条：实现实时行情拉取接口（最新价、深度、K 线），并增加错误兜底与超时控制。
+
+### 已完成事项
+- 完整阅读并复核 `memory-bank/` 全部文档后开始第 17 步实现。
+- 新增实时行情服务：
+  - `src/data/realtime_market.py`：
+    - 新增 `RealtimeMarketDataService`。
+    - 提供统一接口：`get_latest_price()`、`get_depth()`、`get_klines()`。
+    - 增加请求级超时保护（线程 + timeout），超时时返回统一快照结构。
+    - 增加错误兜底：优先回退到最近一次成功数据；无缓存时返回统一空结构并附错误信息。
+  - `src/data/realtime_payloads.py`：
+    - 定义统一返回结构 `RealtimeMarketSnapshot`（`channel/symbol/ok/fallback/timed_out/error/fetched_at_ms/data`）。
+    - 统一归一化 ticker/depth/ohlcv 结构，确保三个接口输出字段格式一致。
+- 更新导出入口：
+  - `src/data/__init__.py` 导出 `RealtimeMarketDataService` 与 `RealtimeMarketSnapshot`。
+- 新增自动化测试：
+  - `tests/test_realtime_market_data.py`，覆盖：
+    - 三类实时接口返回统一结构。
+    - 异常时使用缓存兜底。
+    - 超时时无缓存返回空结构。
+    - 超时时有缓存回退到最近成功数据。
+- 本地自检结果：
+  - `PYTHONPATH=. ./.venv/bin/pytest -q tests/test_realtime_market_data.py tests/test_market_data.py` → `10 passed`
+
+### 验收状态
+- Phase 2 第 17 步代码实现已完成，自动化测试通过。
+- 按你的要求，在你验证第 17 步测试通过前，不启动第 18 步。
+
+### 交接备注
+- 第 17 步仅实现实时行情读取接口与兜底/超时机制，不包含第 18 步价格服务估值逻辑。
+- 本次为遵守 `CLAUDE.md` 单文件行数约束（<300 行），将实时模块拆分为 `realtime_market.py`（流程编排）和 `realtime_payloads.py`（结构与归一化）。
+
+## 2026-02-17（第 18 步）
+
+### 本次目标
+- 执行 `implementation-plan.md` Phase 2 第 18 条：实现价格服务，用最新行情进行资产估值与持仓评估。
+
+### 已完成事项
+- 完整阅读并复核 `memory-bank/` 全部文档后开始第 18 步实现（按你的要求不启动第 19 步）。
+- 新增价格服务实现：
+  - `src/live/price_service.py`：
+    - 新增 `PriceService`，统一执行“最新价获取 → 持仓评估 → 资产估值”流程。
+    - 使用实时行情最新价评估持仓 `market_value` 与 `unrealized_pnl`。
+    - 回写 `positions.current_price` 与 `positions.unrealized_pnl`，保证估值后持仓状态可持久化。
+    - 当实时最新价缺失时，回退使用 `positions.current_price`；两者都缺失则抛错，避免静默错误估值。
+    - 输出聚合结果 `PortfolioValuation`（`base_cash`、`positions_value`、`total_assets`）。
+  - `src/live/__init__.py` 导出 `PriceService`、`PortfolioValuation`、`PositionAssessment`。
+- 新增自动化测试：
+  - `tests/test_price_service.py`，覆盖：
+    - 固定行情输入下估值结果与手算一致（第 18 步核心验收）。
+    - 最新价缺失时使用持仓缓存价回退。
+    - 最新价与持仓缓存价均缺失时报错。
+- 本地自检结果：
+  - `PYTHONPATH=. ./.venv/bin/pytest -q tests/test_price_service.py tests/test_account.py tests/test_realtime_market_data.py` → `12 passed`
+
+### 验收状态
+- Phase 2 第 18 步代码实现已完成，自动化测试通过。
+- 按你的要求，等待你执行并确认测试通过前，不启动第 19 步。
+
+### 交接备注
+- 第 18 步仅覆盖“估值与持仓评估”能力，不包含市价单撮合逻辑（第 19 步边界）。
+- 估值流程复用 `AccountService.compute_total_assets()`，保持账户总资产口径一致。
+
+## 2026-02-17（第 19 步）
+
+### 本次目标
+- 执行 `implementation-plan.md` Phase 2 第 19 条：实现市价单撮合逻辑（按最新价成交），并同步账户与订单状态。
+
+### 已完成事项
+- 完整阅读并复核 `memory-bank/` 全部文档后开始第 19 步实现（按你的要求不启动第 20 步）。
+- 新增市价单撮合引擎：
+  - `src/core/matching.py`：
+    - 新增 `MatchingEngine`、`MarketOrderRequest`、`MarketOrderMatchResult`。
+    - 实现 `execute_market_order()`：按最新价执行市价单，撮合路径为 `pending -> open -> filled`。
+    - 复用 `OrderService` + `TradeService` 完成订单创建、状态推进、成交落库。
+    - 实现账户同步：买单增加基础币，卖单减少基础币并增加报价币。
+    - 实现持仓同步：买单新建/加仓并重算加权成本；卖单减仓并更新 `realized_pnl/unrealized_pnl`。
+    - 增加失败保护：最新价缺失、卖单库存不足时拒绝撮合。
+- 新增自动化测试：
+  - `tests/test_matching.py`，覆盖：
+    - 市价买单按最新价成交并同步账户/持仓。
+    - 固定价格序列下连续成交结果可复算。
+    - 最新价缺失时失败且不写入订单/成交。
+    - 卖单库存不足时失败且不写入订单/成交。
+- 本地自检结果：
+  - `PYTHONPATH=. ./.venv/bin/pytest -q tests/test_matching.py tests/test_trade_service.py tests/test_order_service.py` → `29 passed`
+
+### 验收状态
+- Phase 2 第 19 步代码实现已完成，自动化测试通过。
+- 按你的要求，等待你执行并确认测试通过前，不启动第 20 步。
+
+### 交接备注
+- 第 19 步仅覆盖“市价单即时撮合 + 账户/订单/持仓同步”，未实现限价挂单队列与触发撮合（第 20 步边界）。
+- 交易手续费与滑点仍为后续步骤（第 22 步）实现；当前市价撮合默认手续费为 `0.0`。
+
+## 2026-02-17（第 20 步）
+
+### 本次目标
+- 执行 `implementation-plan.md` Phase 2 第 20 条：实现限价单挂单队列与触发规则，包含队列管理与撮合。
+
+### 已完成事项
+- 完整阅读并复核 `memory-bank/` 全部文档后开始第 20 步实现（按你的要求不启动第 21 步）。
+- 新增限价撮合引擎：
+  - `src/core/limit_matching.py`：
+    - 新增 `LimitOrderMatchingEngine`、`LimitOrderRequest`、`LimitOrderMatchResult`、`LimitOrderSweepResult`。
+    - 实现 `place_limit_order()`：创建限价单并推进到 `open` 挂单状态。
+    - 实现 `list_open_limit_orders()`：按价格-时间优先级返回挂单队列（买单价高优先、卖单价低优先、同价按创建时间）。
+    - 实现 `process_limit_order_queue()`：按最新价扫描并触发成交，买单触发条件 `latest_price <= limit_price`，卖单触发条件 `latest_price >= limit_price`。
+    - 未触发或库存不足的订单保持挂单，等待下一次行情触发。
+  - `src/core/limit_settlement.py`：
+    - 新增 `LimitOrderSettlement`，封装限价成交后的账户与持仓结算。
+    - 实现买单加仓与均价重算、卖单减仓与已实现盈亏更新。
+    - 保持与现有 `OrderService`/`TradeService` 的事务一致性。
+- 新增自动化测试：
+  - `tests/test_limit_matching.py`，覆盖：
+    - 价格未跨越时订单保持挂单；
+    - 价格跨越买单挂单价后成交；
+    - 价格跨越卖单挂单价后成交；
+    - 买单队列价格-时间优先级。
+    - 买单价格改善：限价高于市场价时按市场价成交并返还差价。
+- 本地自检结果：
+  - `PYTHONPATH=. ./.venv/bin/pytest -q tests/test_limit_matching.py` → `5 passed`
+  - `PYTHONPATH=. ./.venv/bin/pytest -q tests/test_matching.py` → `4 passed`（第 19 步回归通过）
+
+### 验收状态
+- Phase 2 第 20 步代码实现已完成，自动化测试通过。
+- 用户已确认第 20 步验收通过（2026-02-17）。
+- 尚未开始第 21 步，等待下一步指令。
+
+### 交接备注
+- 第 20 步仅覆盖“限价挂单队列 + 触发撮合 + 账户/持仓同步”，未实现止损/止盈触发（第 21 步边界）。
+- 当前成交价格采用“对用户更优的市场价”结算（买单更低价、卖单更高价），手续费仍为 `0.0`（第 22 步再补齐手续费/滑点）。
+
+### 第20步补丁（价格改善修复）
+- 修复“限价单无价格改善”问题：
+  - 在 `src/core/limit_matching.py` 中，触发后成交价改为对用户更优的市场价（买单更低价、卖单更高价）。
+  - 对买单增加差价返还：当 `execution_price < limit_price` 时，将 `(limit_price - execution_price) * amount` 返还到报价币 `available/balance`。
+- 验证结果：
+  - `tests/test_limit_matching.py` 新增 `test_limit_buy_price_improvement_refunds_difference`，覆盖“50000 限价、40000 市价”差价返还场景。
+  - 本地测试：`PYTHONPATH=. ./.venv/bin/pytest -q tests/test_limit_matching.py`（5 passed）。
+
+### 第20步补丁（卖单库存预检修复）
+- 修复“无持仓也可挂出限价卖单”问题：
+  - 在 `src/core/limit_matching.py` 的 `place_limit_order()` 增加卖单下单前库存预检。
+  - 当基础币 `available` 或 `positions.amount` 不足时，直接拒绝下单并报错，不进入 `OPEN` 队列。
+- 验证结果：
+  - `tests/test_limit_matching.py` 新增 `test_place_limit_sell_rejects_when_inventory_missing`。
+  - 本地测试：`PYTHONPATH=. ./.venv/bin/pytest -q tests/test_limit_matching.py`（6 passed）。
+
+## 2026-02-18（第 21 步）
+
+### 本次目标
+- 执行 `implementation-plan.md` Phase 2 第 21 条：实现止损/止盈触发机制，并与订单状态机联动。
+
+### 已完成事项
+- 完整阅读并复核 `memory-bank/` 全部文档后开始第 21 步实现（按你的要求不启动第 22 步）。
+- 新增触发引擎 `src/core/stop_trigger.py`：
+  - 新增 `StopTriggerEngine`、`TriggerOrderRequest`、`TriggerMatchResult`、`TriggerSweepResult`。
+  - 新增 `place_trigger_order()`：支持 `STOP_LOSS` / `TAKE_PROFIT` 订单创建并推进到 `OPEN`。
+  - 新增 `process_trigger_orders(symbol)`：按最新价扫描并触发成交。
+  - 触发规则实现：
+    - `STOP_LOSS`: 卖单 `latest <= trigger`，买单 `latest >= trigger`
+    - `TAKE_PROFIT`: 卖单 `latest >= trigger`，买单 `latest <= trigger`
+  - 触发后联动现有状态机：通过 `TradeService.record_trade()` 推进订单状态（`OPEN -> FILLED/PARTIALLY_FILLED`）。
+  - 触发成交后联动账户/持仓结算：复用 `LimitOrderSettlement` 同步 `accounts` 与 `positions`。
+  - 为保持现有资金口径一致，本步触发成交价采用订单触发价（`order.price`），手续费/滑点继续留给第 22 步。
+- 新增自动化测试 `tests/test_stop_trigger.py`，覆盖：
+  - 止损未触发保持挂单；
+  - 止损触发后成交与资金/持仓更新；
+  - 止盈触发后成交与状态联动；
+  - 买向止盈触发（阈值下穿）；
+  - 无库存时卖向触发单下单即拒绝。
+- 本地自检结果：
+  - `PYTHONPATH=. ./.venv/bin/pytest -q tests/test_stop_trigger.py` → `5 passed`
+  - `PYTHONPATH=. ./.venv/bin/pytest -q tests/test_matching.py tests/test_limit_matching.py tests/test_stop_trigger.py` → `15 passed`
+
+### 验收状态
+- Phase 2 第 21 步代码实现已完成，自动化测试通过。
+- 按你的要求，等待你执行并确认测试通过前，不启动第 22 步。
+
+### 交接备注
+- 第 21 步仅覆盖“止损/止盈触发 + 状态联动 + 结算同步”，未实现手续费与滑点（第 22 步边界）。
+
+## 2026-02-18（第 22 步）
+
+### 本次目标
+- 执行 `implementation-plan.md` Phase 2 第 22 条：实现手续费与滑点计算（区分 Maker/Taker），并写入交易记录。
+
+### 已完成事项
+- 完整阅读并复核 `memory-bank/` 全部文档后开始第 22 步实现（按你的要求不启动第 23 步）。
+- 新增执行成本模型 `src/core/execution_cost.py`：
+  - 新增 `ExecutionCostProfile`（`maker_fee_rate`、`taker_fee_rate`、`slippage_rate`）。
+  - 新增滑点计算：买单按不利方向上浮、卖单按不利方向下调。
+  - 新增限价保护滑点：`apply_slippage_with_limit()`，确保不突破限价边界。
+  - 新增 Maker/Taker 手续费计算：`fee = execution_price * amount * fee_rate`。
+- 市价撮合接入手续费与滑点（Taker）：
+  - `src/core/matching.py`：
+    - 市价成交价改为“最新价 + 方向性滑点”。
+    - 成交写入 `trades.fee` 改为 Taker 手续费，不再固定 `0.0`。
+- 限价撮合接入手续费与滑点（Maker）：
+  - `src/core/limit_matching.py`：
+    - 触发成交价改为“参考成交价 + 方向性滑点（且受限价边界保护）”。
+    - 成交写入 `trades.fee` 改为 Maker 手续费，不再固定 `0.0`。
+- 止损/止盈触发接入手续费与滑点（Taker）：
+  - `src/core/stop_trigger.py`：
+    - 触发成交价改为“触发价 + 方向性滑点”。
+    - 成交写入 `trades.fee` 改为 Taker 手续费。
+- 测试补充：
+  - 新增 `tests/test_execution_costs.py`，覆盖“已知参数下手续费与滑点结果可复算”三类场景：
+    - 市价单（Taker）；
+    - 限价单（Maker，含限价边界保护）；
+    - 止损触发单（Taker，卖向滑点）。
+  - 为避免影响既有第 19-21 步验收断言，在 `tests/test_matching.py`、`tests/test_limit_matching.py`、`tests/test_stop_trigger.py` 的测试构造器中显式注入零费率零滑点配置，保持历史测试口径稳定。
+- 本地仅执行轻量语法检查（未运行 pytest）：
+  - `python -m compileall src tests/test_execution_costs.py` → 通过。
+
+### 验收状态
+- Phase 2 第 22 步代码已实现并提交，待你执行测试验证。
+- 按你的要求，在你确认第 22 步测试通过前，不启动第 23 步。
+
+### 交接备注
+- 第 22 步仅覆盖“手续费与滑点计算 + 写入交易记录”，未开始第 23 步订单状态机扩展。
+
+## 2026-02-18（第 23 步）
+
+### 本次目标
+- 执行 `implementation-plan.md` Phase 2 第 23 条：实现订单状态机（新建、挂单、部分成交、成交、撤单、拒单），并定义合法流转表。
+
+### 已完成事项
+- 完整阅读并复核 `memory-bank/` 全部文档后开始第 23 步实现（按你的要求不启动第 24 步）。
+- 新增订单状态机模块：
+  - `src/core/order_state_machine.py`：
+    - 新增 `VALID_ORDER_STATUS_TRANSITIONS`，统一定义订单合法流转。
+    - 明确“新建”在系统中的持久化状态映射为 `pending`（`ORDER_NEW_STATUS`）。
+    - 新增 `can_transition()` 与 `get_valid_next_statuses()` 供服务层复用。
+- 状态机接入订单服务：
+  - `src/core/order_service.py`：
+    - `update_order_status()` 改为复用统一状态机表做流转校验。
+    - 新增“撤单状态路由”：当目标状态为 `canceled` 时，统一走 `cancel_order()`，确保冻结资金释放逻辑不被绕过。
+    - `cancel_order()` 改为复用状态机判断可撤销状态。
+- 状态机接入成交写入服务：
+  - `src/core/trade_service.py`：
+    - 在更新订单 `filled/status` 前增加流转校验，防止服务层绕过合法状态机直接写库。
+- 新增第 23 步测试：
+  - `tests/test_order_state_machine.py`，覆盖：
+    - 合法流转表逐条路径；
+    - 非法流转拒绝；
+    - `pending -> rejected`、`pending -> canceled` 以及 `partially_filled -> partially_filled` 服务级路径。
+- 代码结构优化：
+  - `src/core/order_service.py` 行数已收敛至 300 行以内（282 行），符合 `CLAUDE.md` 模块化约束。
+- 本地自检结果：
+  - `PYTHONPATH=. ./.venv/bin/pytest -q tests/test_order_state_machine.py tests/test_order_service.py tests/test_trade_service.py` → `44 passed`
+
+### 验收状态
+- Phase 2 第 23 步代码实现已完成，自动化测试通过。
+- 按你的要求，等待你执行并确认测试通过前，不启动第 24 步。
+
+### 交接备注
+- 第 23 步已将订单流转规则从“分散在服务实现”收敛为“单一状态机定义”，后续新增状态时需同步更新状态机表与测试。
+- 第 24 步（风险控制）尚未开始。
+
+## 2026-02-18（第 24 步）
+
+### 本次目标
+- 执行 `implementation-plan.md` Phase 2 第 24 条：实现风险控制（单笔仓位、总仓位、最大回撤），并在下单前拦截超限请求。
+
+### 已完成事项
+- 完整阅读并复核 `memory-bank/` 全部文档后开始第 24 步实现（按你的要求不启动第 25 步）。
+- 新增风控模块：
+  - `src/core/risk.py`：
+    - 新增 `RiskControl`，统一实现下单前风险校验。
+    - 新增 `RiskLimits`（`max_position_size` / `max_total_position` / `max_drawdown`）。
+    - 新增 `RiskControlError` 与拒单原因日志记录。
+    - 校验覆盖：单笔仓位占比、下单后预测总仓位占比、最大回撤阈值。
+- 将风控接入三类下单入口（均为下单前拦截）：
+  - `src/core/matching.py`（市价单）
+  - `src/core/limit_matching.py`（限价单）
+  - `src/core/stop_trigger.py`（止损/止盈下单）
+- 为风控估值读取新增 `AccountService.base_currency` 属性（`src/core/account_service.py`）。
+- 新增第 24 步测试：
+  - `tests/test_risk_controls.py`，覆盖：
+    - 单笔仓位超限拒单；
+    - 总仓位超限拒单；
+    - 最大回撤超限拒单。
+- 回归并通过本地自检：
+  - `PYTHONPATH=. ./.venv/bin/pytest -q tests/test_risk_controls.py tests/test_matching.py tests/test_limit_matching.py tests/test_stop_trigger.py` → `18 passed`
+  - `PYTHONPATH=. ./.venv/bin/pytest -q tests/test_execution_costs.py tests/test_order_state_machine.py` → `22 passed`
+
+### 验收状态
+- Phase 2 第 24 步代码实现已完成，自动化测试通过。
+- 按你的要求，等待你执行并确认测试通过前，不启动第 25 步。
+
+### 交接备注
+- 目前风控拒单会在下单前直接阻断订单创建，`orders/trades` 不会写入超限请求。
+- 第 25 步（策略接口生命周期）尚未开始。
+
+## 2026-02-18（第 25 步）
+
+### 本次目标
+- 执行 `implementation-plan.md` Phase 3 第 25 条：设计策略接口生命周期（初始化、运行、停止、订单/成交回调），并形成文档。
+
+### 已完成事项
+- 完整阅读 `memory-bank/` 全部文档后开始第 25 步实现（按你的要求不启动第 26 步）。
+- 实现策略生命周期接口：
+  - `src/strategies/base.py`：
+    - 新增 `LiveStrategy` 生命周期基类。
+    - 新增 `StrategyContext`、`StrategyOrderEvent`、`StrategyTradeEvent`。
+    - 新增生命周期状态守卫与异常 `StrategyLifecycleError`。
+    - 生命周期覆盖：`initialize`、`run`、`stop`、`notify_order`、`notify_trade`。
+- 实现最小生命周期驱动器：
+  - `src/live/simulator.py`：
+    - 新增 `StrategyLifecycleDriver`，用于触发策略生命周期回调（非实时主循环）。
+- 实现最小示例策略：
+  - `src/strategies/lifecycle_demo_strategy.py`：
+    - 新增 `LifecycleProbeStrategy`，记录生命周期事件并在 `on_run` 返回 `{"action": "hold"}`。
+- 补充导出入口：
+  - `src/strategies/__init__.py`
+  - `src/live/__init__.py`
+- 新增第 25 步验收测试：
+  - `tests/test_strategies.py` 覆盖：
+    - 生命周期回调按顺序触发；
+    - 未初始化前运行被拒绝；
+    - 重复初始化被拒绝。
+- 新增设计文档：
+  - `memory-bank/strategy-interface-lifecycle-design.md`（生命周期契约、状态守卫、最小示例、验收映射）。
+- 本地自检（语法）通过：
+  - `python -m compileall src/strategies src/live tests/test_strategies.py`。
+
+### 验收状态
+- Phase 3 第 25 步代码与文档已完成，等待你运行测试并确认通过。
+- 按你的要求，在你确认第 25 步测试通过前，不启动第 26 步。
+
+### 交接备注
+- 第 25 步仅交付生命周期接口与最小示例，不包含 Backtrader 集成。
+- 第 26 步开始前，应直接复用本步 `LiveStrategy` 生命周期契约，避免回测/实时策略接口分叉。
+
+## 2026-02-18（第 26 步）
+
+### 本次目标
+- 执行 `implementation-plan.md` Phase 3 第 26 条：集成 Backtrader 回测引擎，支持 Pandas 数据馈送，并强制回测读取路径仅来自 SQLite。
+
+### 已完成事项
+- 完整阅读 `memory-bank/` 全部文档后开始第 26 步实现（按你的要求不启动第 27 步）。
+- 新增回测引擎：
+  - `src/backtest/engine.py`：
+    - 新增 `BacktestEngine`、`BacktestRunRequest`、`BacktestRunResult`、`BacktestEngineError`。
+    - 实现 `run()`：装配 `bt.Cerebro`、加载 `PandasData`、运行策略并输出基础统计（初始资金、期末资金、PnL、收益率、样本条数）。
+    - 实现 `from_config()`：从配置读取初始资金、费率、滑点与数据源约束。
+- 新增 Pandas 数据馈送桥接：
+  - `src/data/feed.py`：
+    - 新增 `SQLitePandasFeedFactory`、`BacktestDataSlice`、`SQLiteFeedError`。
+    - 实现从 SQLite `candles` 查询并转换为 `pandas.DataFrame`。
+    - 实现 DataFrame 到 `backtrader.feeds.PandasData` 的 timeframe/compression 映射。
+- 落地“回测读取路径仅 SQLite”强约束：
+  - `src/backtest/engine.py`：`data_read_source` 非 `sqlite` 直接拒绝。
+  - `src/utils/config_defaults.py`：新增 `backtest.data_read_source: sqlite` 默认值。
+  - `src/utils/config_validation.py`：新增 `backtest.data_read_source` 校验，拒绝 CSV/Parquet 运行态读取。
+  - `config/config.yaml`：新增 `backtest.data_read_source: sqlite`。
+- 补充导出入口：
+  - `src/backtest/__init__.py`
+  - `src/data/__init__.py`
+- 新增测试：
+  - `tests/test_backtest_engine.py`：覆盖小样本回测基础统计、非 sqlite 读取拒绝、无数据区间报错。
+  - `tests/test_config.py`：新增 `test_load_config_rejects_non_sqlite_backtest_data_read_source`。
+- 本地自检通过：
+  - `PYTHONPATH=. ./.venv/bin/pytest -q tests/test_backtest_engine.py tests/test_config.py` → `10 passed`。
+
+### 验收状态
+- Phase 3 第 26 步代码实现已完成，自动化测试通过。
+- 用户已确认第 26 步验收通过（2026-02-18）。
+- 第 27 步已开始实现。
+
+### 交接备注
+- 第 26 步仅覆盖"Backtrader 引擎 + Pandas 数据馈送 + SQLite 读取约束"，未挂载标准分析器（第 27 步边界）。
+- 第 27 步开始前，保持 `BacktestRunResult` 仅输出基础统计，不提前引入标准分析器字段。
+
+## 2026-02-18（第 27 步）
+
+### 本次目标
+
+- 执行 `implementation-plan.md` Phase 3 第 27 条：挂载标准分析器（夏普、回撤、交易统计、收益率、时间序列收益），统一结果结构。
+
+### 已完成事项
+
+- 完整阅读并复核 `memory-bank/` 全部文档后开始第 27 步实现（按你的要求不启动第 28 步）。
+- 新增分析器挂载模块 `src/backtest/analyzers.py`（52 行）：
+  - 新增 `AnalyzerMount` 类，提供 `attach_analyzers()` 与 `extract_results()` 方法。
+  - `attach_analyzers()` 挂载 5 个标准分析器：`SharpeRatio`、`DrawDown`、`TradeAnalyzer`、`Returns`、`TimeReturn`。
+  - `extract_results()` 从策略实例提取所有分析器结果并返回统一字典结构。
+- 扩展回测引擎 `src/backtest/engine.py`（197 行 → 341 行）：
+  - 新增 3 个数据类：`TradeStatistics`（9 字段）、`RiskMetrics`（3 字段）、`ReturnsAnalysis`（2 字段）。
+  - 扩展 `BacktestRunResult`，新增 4 个分析器字段：`trade_stats`、`risk_metrics`、`returns_analysis`、`time_series_returns`。
+  - 更新 `run()` 方法：在 `cerebro.run()` 前挂载分析器，运行后提取结果并转换为统一结构。
+  - 新增 4 个转换方法：
+    - `_build_trade_stats()`：处理无交易边界情况（返回零值而非报错）。
+    - `_build_risk_metrics()`：处理 Sharpe 比率可能为 `None` 的情况。
+    - `_build_returns_analysis()`：提取总收益与平均收益。
+    - `_build_time_series()`：将 `datetime` 键转换为 ISO 字符串，便于 JSON 序列化。
+- 更新导出入口 `src/backtest/__init__.py`：
+  - 导出 `AnalyzerMount`、`TradeStatistics`、`RiskMetrics`、`ReturnsAnalysis`。
+- 新增第 27 步验收测试 `tests/test_backtest_analyzers.py`（305 行）：
+  - `test_all_analyzers_produce_output`：验证所有 5 个分析器产生输出且字段完整。
+  - `test_no_trades_scenario_returns_zeros`：验证无交易场景返回零值（不报错）。
+  - `test_sharpe_ratio_edge_case_insufficient_data`：验证 Sharpe 比率在数据不足时为 `None`。
+  - `test_time_series_format_iso_strings`：验证时间序列键为 ISO 字符串、值为浮点数。
+  - `test_field_completeness_all_fields_present`：验证所有数据类字段存在且完整。
+- 本地语法检查通过：`python -m compileall src/backtest/analyzers.py src/backtest/engine.py src/backtest/__init__.py tests/test_backtest_analyzers.py`。
+
+### 第 27 步 Bug 修复（2026-02-18）
+
+**问题发现**：
+- 用户审查发现 `SimpleTestStrategy` 实际未执行任何已平仓交易（`total_trades=0`）。
+- 原因：原策略逻辑中 `trade_count < 3` 限制 + 订单提交后下一 bar 才成交，导致未形成完整的开仓-平仓周期。
+- 后果：`test_all_analyzers_produce_output` 实际测试的是无交易场景，与 `test_no_trades_scenario_returns_zeros` 完全重复，未验证有交易时的 `win_rate`、`profit_factor`、`avg_profit` 等字段的正确性。
+
+**修复措施**：
+- 重写 `SimpleTestStrategy`：
+  - 改为"买入 → 持有 3 根 K 线 → 卖出"的完整周期策略。
+  - 限制执行 3 个完整交易周期（`completed_trades < 3`）。
+  - 新增 `notify_order()` 回调清理订单引用，避免重复下单。
+  - 使用固定仓位 `size=0.1` 确保测试可复现。
+- 强化测试断言：
+  - 在 `test_all_analyzers_produce_output` 中新增关键断言：`assert result.trade_stats.total_trades > 0`，确保策略真实执行交易。
+  - 新增 `won_trades + lost_trades == total_trades` 一致性校验。
+- 验证结果：
+  - 修复后策略执行 3 笔已平仓交易（`total_trades=3, won_trades=3, lost_trades=0`）。
+  - 所有 5 个测试通过，真实验证了分析器在有交易场景下的输出。
+
+### 第 27 步模块化重构（2026-02-18）
+
+**问题发现**：
+- 用户审查发现 `src/backtest/engine.py` 达到 341 行，超出 `CLAUDE.md` 约束的 300 行限制。
+- 原因：第 27 步新增 4 个数据类（`TradeStatistics`、`RiskMetrics`、`ReturnsAnalysis`、`BacktestRunResult`）和 4 个转换方法（`_build_trade_stats`、`_build_risk_metrics`、`_build_returns_analysis`、`_build_time_series`），导致文件膨胀。
+
+**重构措施**：
+- 新增 `src/backtest/result_models.py`（73 行）：
+  - 迁移所有数据类：`BacktestRunRequest`、`TradeStatistics`、`RiskMetrics`、`ReturnsAnalysis`、`BacktestRunResult`。
+- 新增 `src/backtest/result_builder.py`（124 行）：
+  - 新增 `AnalyzerResultBuilder` 类，封装 4 个转换方法。
+  - 所有方法改为静态方法，便于测试与复用。
+- 重写 `src/backtest/engine.py`（196 行）：
+  - 移除数据类和转换方法，仅保留 `BacktestEngine` 核心逻辑。
+  - 在 `run()` 方法中使用 `AnalyzerResultBuilder` 进行结果转换。
+- 更新 `src/backtest/__init__.py`：
+  - 新增导出 `AnalyzerResultBuilder`、`result_models` 中的数据类。
+  - 保持向后兼容，所有原有导出路径不变。
+
+**验证结果**：
+- 文件行数：`engine.py` 196 行 ✅、`result_models.py` 73 行 ✅、`result_builder.py` 124 行 ✅（均符合 <300 行约束）。
+- 所有测试通过：`test_backtest_analyzers.py`（5 passed）、`test_backtest_engine.py`（3 passed）。
+- 向后兼容：测试代码无需修改，导入路径保持不变。
+
+### 验收状态
+
+- Phase 3 第 27 步代码实现已完成，测试 Bug 已修复，模块化重构完成，全量测试通过（8 passed）。
+- 用户已确认第 27 步验收通过（2026-02-18）。
+- 按你的要求，在你确认第 27 步测试通过前，不启动第 28 步。
+
+### 交接备注
+
+- 第 27 步已挂载 5 个标准分析器并统一结果结构，满足验收标准"每个分析器均有输出且字段完整"。
+- `BacktestRunResult` 现包含 12 个字段（8 个基础统计 + 4 个分析器输出），向后兼容第 26 步。
+- 测试策略已修复，确保真实验证有交易场景下的分析器输出（而非全零值）。
+- 模块化重构完成，所有文件符合 <300 行约束，代码结构清晰可维护。
+- 第 28 步（输出回测结果）尚未开始，当前结果仅在内存中，未实现 CSV/JSON 导出。
+
+
+### 第 27 步测试断言修复（2026-02-19）
+
+**问题发现**：
+- 用户审查发现 `test_sharpe_ratio_edge_case_insufficient_data` 测试存在弱断言问题。
+- 原断言：`assert result.risk_metrics.sharpe_ratio is None or isinstance(result.risk_metrics.sharpe_ratio, float)`
+- 问题：该断言同时接受 `None` 和 `float` 值，无论实现返回什么都会通过，未真正验证边界情况。
+- 测试名称和文档字符串明确说明应验证数据不足时返回 None，但断言未强制执行此行为。
+
+**修复措施**：
+- 替换弱断言为具体断言：
+  ```python
+  # 新断言：明确验证 None 值
+  assert result.risk_metrics.sharpe_ratio is None, (
+      f"Expected None for insufficient data (30h with Years timeframe), "
+      f"got {result.risk_metrics.sharpe_ratio}"
+  )
+  ```
+- 添加描述性错误消息，说明预期行为和失败原因。
+- 通过临时破坏测试（期望 float）验证断言确实有效，确认失败时会正确报错。
+
+**验证结果**：
+- 修复后测试通过：`PYTHONPATH=. ./.venv/bin/pytest -q tests/test_backtest_analyzers.py` → `5 passed`
+- 全量分析器测试套件通过：所有 5 个测试均通过
+- 断言验证：临时修改为期望 float 时测试正确失败，显示清晰错误消息
+- 回归测试：恢复正确断言后测试通过
+
+**影响评估**：
+- 风险：极低 - 仅修改测试断言，未触及生产代码
+- 范围：单个测试文件，单个断言（`tests/test_backtest_analyzers.py` 第 225-229 行）
+- 向后兼容：无影响 - 测试不属于公共 API
+- 回归保护：现在测试真正验证边界情况，提供实际的回归保护
+
+**技术细节**：
+- 测试使用 `NoTradeStrategy` 和 30 小时数据，配合 Backtrader 默认 `TimeFrame.Years`
+- 由于没有完整年度周期，TimeReturn 分析器产生零年度收益
+- 这导致 `len(returns) = 0`，触发 SharpeRatio 返回 `None`（符合预期）
+- 修复前：断言总是通过，无论返回 None 还是 float
+- 修复后：断言强制验证返回 None，匹配测试意图
+
+### 第 27 步残留问题修复（2026-02-19）
+
+**问题发现**：
+- 用户审查发现 `profit_factor` 在全赢（无亏损）场景下返回 `0.0`，语义上应为无限大或未定义。
+- 发现 `test_all_analyzers_produce_output` 中仍存在 `sharpe_ratio is None or isinstance(float)` 的弱断言，未同步修复。
+
+**修复措施**：
+- **Profit Factor 语义修复**：
+  - 修改 `src/backtest/result_models.py`：`profit_factor` 类型改为 `float | None`，`None` 表示全赢。
+  - 修改 `src/backtest/result_builder.py`：全赢时（`gross_loss == 0, gross_profit > 0`）返回 `None`；无交易时仍返回 `0.0`。
+  - 更新测试断言：`assert profit_factor is None or profit_factor >= 0.0`。
+- **Sharpe 弱断言彻底修复**：
+  - 修改 `tests/test_backtest_analyzers.py`：将 `test_all_analyzers_produce_output` 中的弱断言替换为明确的 `is None` 断言（因测试数据不足一年，Backtrader 确实返回 None）。
+
+**验证结果**：
+- 全量测试通过：`144 passed` ✅
+- 实际运行验证：全赢场景下 `profit_factor` 正确返回 `None`。
+
+## 2026-02-19（第 28 步）
+
+### 本次目标
+- 执行 `implementation-plan.md` Phase 3 第 28 条：输出回测结果（报告、交易明细、资金曲线数据），支持 CSV 与 JSON。
+
+### 已完成事项
+- 完整阅读并复核 `memory-bank/` 全部文档后开始第 28 步实现（按你的要求不启动第 29 步）。
+- 新增回测结果导出模块 `src/backtest/exporter.py`（172 行）：
+  - 新增 `BacktestResultExporter`，提供统一的导出接口。
+  - 实现 `export_summary_json()`：导出回测摘要报告（基础信息、资金统计、交易统计、风险指标、收益分析）。
+  - 实现 `export_summary_csv()`：导出扁平化的摘要报告（键值对格式，便于表格查看）。
+  - 实现 `export_equity_curve_json()`：导出时间序列收益数据（资金曲线）。
+  - 实现 `export_equity_curve_csv()`：导出时间序列收益数据（时间戳-收益率格式）。
+  - 实现 `export_all()`：一键导出所有格式（4个文件：summary JSON/CSV + equity curve JSON/CSV）。
+  - 支持自定义文件名前缀，便于批量回测结果管理。
+  - 自动创建输出目录（如不存在）。
+  - 正确处理 `None` 值（如 `sharpe_ratio=None`、`profit_factor=None`）。
+- 更新 `src/backtest/__init__.py`：导出 `BacktestResultExporter` 和 `BacktestExporterError`。
+**问题 3（低）：Error path 无测试覆盖**
+- `BacktestExporterError` 的触发路径没有任何测试。
+- 修复：重构 `tests/test_backtest_exporter.py`，使用 `pytest.mark.parametrize` 实现 **100% 错误路径覆盖**：
+  - `test_export_methods_handle_os_error`：覆盖所有 6 个导出方法的 `OSError`（只读目录权限拒绝）。
+  - `test_export_methods_handle_type_error`：覆盖 3 个 JSON 导出方法的 `TypeError`（非序列化对象注入）。
+
+### 验证结果
+- `tests/test_backtest_exporter.py` 18 passed（大幅提升覆盖率）✅
+- `tests/test_backtest_analyzers.py` 5 passed ✅
+- 全量测试：`162 passed, 0 failed` ✅（原 154）
+- 新增第 28 步验收测试 `tests/test_backtest_exporter.py`（8 项测试）：
+  - `test_export_summary_json_creates_file`：验证 JSON 摘要文件创建与结构完整性。
+  - `test_export_summary_csv_creates_file`：验证 CSV 摘要文件创建与扁平化结构。
+  - `test_export_equity_curve_json_creates_file`：验证资金曲线 JSON 文件创建与时间序列数据。
+  - `test_export_equity_curve_csv_creates_file`：验证资金曲线 CSV 文件创建与时间排序。
+  - `test_export_all_creates_all_files`：验证一键导出创建所有 4 个文件。
+  - `test_export_all_with_prefix`：验证文件名前缀功能。
+  - `test_exporter_creates_output_directory_if_missing`：验证自动创建输出目录。
+  - `test_export_handles_none_values_in_result`：验证正确处理 `None` 值（边界情况）。
+- 本地测试结果：
+  - `PYTHONPATH=. ./.venv/bin/pytest -xvs tests/test_backtest_exporter.py` → `8 passed`
+  - 回测模块回归测试：`16 passed`（包含第 26-27-28 步全部测试）
+
+### 验收状态
+- Phase 3 第 28 步代码实现已完成，自动化测试通过。
+- 按你的要求，等待你执行并确认测试通过前，不启动第 29 步。
+
+### 交接备注
+- 第 28 步仅覆盖"回测结果导出（摘要 + 资金曲线）"，未实现第 29 步的实时模拟主循环。
+- 导出格式符合验收标准：生成文件存在且字段匹配设计（JSON 保持嵌套结构，CSV 扁平化为键值对）。
+- 资金曲线数据来自 `BacktestRunResult.time_series_returns`（第 27 步 TimeReturn 分析器输出）。
+- CSV/JSON 导出符合数据路径约束：仅用于 export/backup，不参与运行态读写。
+

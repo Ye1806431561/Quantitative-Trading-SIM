@@ -86,6 +86,7 @@ DEFAULT_CONFIG: dict[str, Any] = {
     "backtest": {
         "default_timeframe": "1h",
         "default_period": 90,
+        "data_read_source": "sqlite",
     },
 }
 

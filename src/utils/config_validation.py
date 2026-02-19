@@ -102,6 +102,12 @@ def validate_config(config: dict[str, Any]) -> None:
             f"backtest.default_timeframe must be one of {sorted(ALLOWED_TIMEFRAMES)}"
         )
     _require_int(config, ("backtest", "default_period"), min_value=1)
+    data_read_source = _require_string(config, ("backtest", "data_read_source"))
+    if data_read_source.lower() != "sqlite":
+        raise ConfigValidationError(
+            "backtest.data_read_source must be 'sqlite' "
+            "(CSV/Parquet runtime reads are not allowed)"
+        )
 
 
 def validate_strategies_config(config: dict[str, Any]) -> None:

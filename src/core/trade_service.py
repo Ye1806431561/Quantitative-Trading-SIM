@@ -9,6 +9,7 @@ from typing import Sequence
 from src.core.database import SQLiteDatabase
 from src.core.enums import OrderSide, OrderStatus
 from src.core.order_service import OrderService
+from src.core.order_state_machine import can_transition
 from src.core.trade import Trade
 
 
@@ -102,6 +103,10 @@ class TradeService:
 
             # Update order filled + status
             new_status = OrderStatus.FILLED if new_filled == order.amount else OrderStatus.PARTIALLY_FILLED
+            if not can_transition(order.status, new_status):
+                raise TradeServiceError(
+                    f"invalid status transition: {order.status.value} -> {new_status.value}"
+                )
             timestamp = int(time.time() * 1000)
             tx.execute(
                 """
