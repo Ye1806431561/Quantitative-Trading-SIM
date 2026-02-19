@@ -1094,3 +1094,57 @@
 - 资金曲线数据来自 `BacktestRunResult.time_series_returns`（第 27 步 TimeReturn 分析器输出）。
 - CSV/JSON 导出符合数据路径约束：仅用于 export/backup，不参与运行态读写。
 
+## 2026-02-19（第 29 步）
+
+### 本次目标
+- 执行 `implementation-plan.md` Phase 3 第 29 条：实现实时模拟主循环（行情拉取→策略执行→下单→撮合→持仓更新）。
+
+### 已完成事项
+- 完整阅读并复核 `memory-bank/` 全部文档后开始第 29 步实现（按你的要求不启动第 30 步）。
+- 新增实时模拟主循环模块 `src/live/realtime_loop.py`（298 行）：
+  - 新增 `RealtimeSimulationLoop`，实现完整的实时模拟主循环。
+  - 新增 `RealtimeLoopConfig`，定义循环配置（symbol、timeframe、tick_interval_seconds、max_iterations）。
+  - 实现 `start()`：初始化策略并启动主循环。
+  - 实现 `_run_loop()`：执行主循环逻辑，包含 8 个步骤：
+    1. 拉取最新市场数据（`get_latest_price`）
+    2. 持久化最新 K 线到 SQLite（运行态写入路径）
+    3. 更新持仓估值（`valuate_portfolio`）
+    4. 处理挂单队列（限价单 + 止损/止盈触发）
+    5. 准备市场数据传递给策略
+    6. 运行策略并获取信号
+    7. 执行策略信号（市价单/限价单/止损止盈单）
+    8. 通知策略订单/成交更新
+  - 实现 `_persist_latest_candle()`：将最新价格作为 K 线写入 SQLite（符合运行态写入路径约束）。
+  - 实现 `_execute_strategy_signal()`：解析并执行策略信号（支持 market/limit/stop_loss/take_profit 四种订单类型）。
+  - 实现 `_notify_strategy_updates()`：通知策略最近的订单和成交更新。
+  - 实现 `from_config()`：从配置字典构建循环实例的工厂方法。
+  - 集成三个撮合引擎：`MatchingEngine`（市价单）、`LimitOrderMatchingEngine`（限价单）、`StopTriggerEngine`（止损/止盈）。
+  - 支持优雅错误处理：市场数据失败、策略信号执行失败、通知失败均不会中断循环。
+  - 支持 `max_iterations` 限制，用于测试和有限运行场景。
+- 更新 `src/live/__init__.py`：导出 `RealtimeSimulationLoop`、`RealtimeLoopConfig`、`RealtimeLoopError`。
+- 新增第 29 步验收测试 `tests/test_realtime_loop.py`（8 项测试）：
+  - `test_loop_initializes_strategy_and_runs_iterations`：验证循环初始化策略并执行多次迭代。
+  - `test_loop_fetches_market_data_and_passes_to_strategy`：验证循环拉取市场数据并传递给策略。
+  - `test_loop_persists_candles_to_sqlite`：验证循环将最新 K 线持久化到 SQLite（运行态写入路径）。
+  - `test_loop_executes_market_buy_signal`：验证循环执行市价买单信号。
+  - `test_loop_executes_limit_order_signal`：验证循环执行限价单信号。
+  - `test_loop_handles_market_data_fetch_failure_gracefully`：验证循环在市场数据失败时优雅处理。
+  - `test_loop_stops_when_max_iterations_reached`：验证循环在达到最大迭代次数后停止。
+  - `test_loop_from_config_factory_method`：验证循环可以从配置字典构建。
+- 本地测试结果：
+  - `PYTHONPATH=. ./.venv/bin/pytest -q tests/test_realtime_loop.py` → `8 passed, 8 warnings`
+  - 快速验证脚本：`tests/quick_test_loop.py` → `✓ Test passed!`
+
+### 验收状态
+- Phase 3 第 29 步代码实现已完成，自动化测试通过。
+- 用户已确认第 29 步验收通过（2026-02-19）。
+- 按你的要求，在你确认第 29 步测试通过前，不启动第 30 步。
+
+### 交接备注
+- 第 29 步实现了完整的实时模拟主循环，整合了所有已实现的组件（市场数据、策略、撮合、风控、持仓管理）。
+- 实时模式的数据读取路径符合约束：先将最新行情落 SQLite，策略可从 SQLite 读取历史数据。
+- CSV/Parquet 不参与运行态读写，仅用于 import/export/backup。
+- 循环支持三种订单类型执行：市价单（即时成交）、限价单（挂单队列）、止损/止盈（触发单）。
+- 循环具备容错能力：市场数据失败、策略执行失败、通知失败均不会中断循环，仅记录错误并继续。
+- 第 30 步（策略适配器）尚未开始，当前策略需要直接继承 `LiveStrategy` 基类。
+

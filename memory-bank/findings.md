@@ -307,6 +307,10 @@
 - `tests/test_realtime_market_data.py`
 - `tests/test_price_service.py`
 - `tests/test_backtest_engine.py`
+- `tests/test_backtest_analyzers.py`
+- `tests/test_backtest_exporter.py`
+- `tests/test_realtime_loop.py`
+- `tests/quick_test_loop.py`
 - `memory-bank/market-data-interface-design.md`
 - `memory-bank/strategy-interface-lifecycle-design.md`
 - `memory-bank/task.md`
@@ -342,3 +346,15 @@
 - **Step 27 残留问题修复（2026-02-19）**：
   - **Profit Factor 语义修复**：原实现中全赢（无亏损）时 `profit_factor` 返回 `0.0`，修正为 `None`（表示无限大/未定义），与 Sharpe Ratio 的 `None` 语义对齐。同步更新 `result_models.py` 类型定义与 `result_builder.py` 计算逻辑。
   - **Sharpe 弱断言彻底修复**：发现 `test_all_analyzers_produce_output` 中仍存在 `is None or isinstance(float)` 的弱断言，统一替换为明确的 `is None` 断言，确保所有测试用例均提供有效回归保护。
+- **Step 29 实时模拟主循环实现（2026-02-19）**：
+  - 实现 `src/live/realtime_loop.py`（298 行），整合所有已实现组件（市场数据、策略、撮合、风控、持仓管理）。
+  - 实现 8 步循环逻辑：拉取行情 → 持久化 K 线到 SQLite → 更新持仓估值 → 处理挂单队列 → 运行策略 → 执行信号 → 通知更新。
+  - 关键设计决策：
+    - **运行态写入路径约束**：最新行情先落 SQLite `candles` 表（`_persist_latest_candle`），符合"运行态写入目标仅 SQLite"约束。
+    - **容错设计**：市场数据失败、策略执行失败、通知失败均不会中断循环，仅记录错误并继续。
+    - **迭代控制**：支持 `max_iterations` 限制，用于测试和有限运行场景；循环在检查 `max_iterations` 前先增加计数，避免多执行一次。
+    - **参数顺序修复**：`AccountService.from_config` 参数顺序为 `(database, config)`，`PriceService` 构造函数参数顺序为 `(database, account_service, market_reader)`，初始实现中参数顺序错误导致测试失败，已修复。
+  - 集成三个撮合引擎：`MatchingEngine`（市价单）、`LimitOrderMatchingEngine`（限价单）、`StopTriggerEngine`（止损/止盈）。
+  - 实现策略信号执行：支持 market/limit/stop_loss/take_profit 四种订单类型，解析策略返回的信号字典并调用对应撮合引擎。
+  - 测试覆盖：8 项验收测试（循环初始化、市场数据拉取、K 线持久化、信号执行、错误处理、迭代控制、工厂方法），全量测试通过（8 passed, 8 warnings）。
+  - 快速验证脚本 `tests/quick_test_loop.py` 验证基本功能正常（3 次迭代，策略运行 3 次）。

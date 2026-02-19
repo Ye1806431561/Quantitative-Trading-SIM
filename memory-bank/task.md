@@ -33,9 +33,9 @@
 ## Phase 3: Strategies & Dual Engines
 - [x] 25. Design strategy interface lifecycle <!-- id: 24 -->
 - [x] 26. Integrate Backtrader engine <!-- id: 25 -->
-- [ ] 27. Mount standard analyzers <!-- id: 26 -->
-- [ ] 28. Output backtest results <!-- id: 27 -->
-- [ ] 29. Implement real-time simulation loop <!-- id: 28 -->
+- [x] 27. Mount standard analyzers <!-- id: 26 -->
+- [x] 28. Output backtest results <!-- id: 27 -->
+- [x] 29. Implement real-time simulation loop <!-- id: 28 -->
 - [ ] 30. Implement strategy adapter <!-- id: 29 -->
 - [ ] 31. Implement Dual MA strategy <!-- id: 30 -->
 - [ ] 32. Implement Grid strategy <!-- id: 31 -->

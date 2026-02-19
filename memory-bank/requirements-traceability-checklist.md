@@ -1,9 +1,9 @@
-# 需求追踪清单（Phase 0-3 / Step 1-28）
+# 需求追踪清单（Phase 0-3 / Step 1-29）
 
 ## 说明
 - 来源文档：`memory-bank/product-requirement-document.md`
 - 目标：将需求逐项映射到模块与交付物，并标记范围（必选/可选）
-- 状态：已完成实施计划第 1-28 步代码与文档落地（第 28 步已实现待用户验证），第 29 步未开始
+- 状态：已完成实施计划第 1-29 步代码与文档落地（第 29 步已验证通过），第 30 步未开始
 
 ## 最小可用范围（MVP）定义
 
@@ -411,3 +411,17 @@
   - 所有数据类字段存在且完整。
 - [x] 本地语法检查通过：`python -m compileall src/backtest/analyzers.py src/backtest/engine.py src/backtest/__init__.py tests/test_backtest_analyzers.py`。
 - [ ] 用户验证（等待你运行测试并确认通过；通过前不启动第 28 步）。
+
+## 第29步验收检查（已通过）
+
+- [x] 已实现实时模拟主循环 `RealtimeSimulationLoop`（`src/live/realtime_loop.py`），实现完整闭环：行情拉取→持久化→估值→挂单处理→策略执行→信号执行→通知更新。
+- [x] 已集成三个撮合引擎：`MatchingEngine`（市价单）、`LimitOrderMatchingEngine`（限价单）、`StopTriggerEngine`（止损/止盈）。
+- [x] 已实现运行态 K 线持久化到 SQLite `candles` 表（`_persist_latest_candle`），符合 DC-001 约束。
+- [x] 已确认 CSV/Parquet 不参与运行态读写，符合 DC-003/DC-004 约束。
+- [x] 已实现策略信号执行：支持 market/limit/stop_loss/take_profit 四种订单类型。
+- [x] 已实现容错机制：市场数据失败、策略执行失败、通知失败均不中断循环。
+- [x] 已实现 `from_config()` 工厂方法，支持从配置字典构建循环实例。
+- [x] 已完成模块化重构：拆分为 `realtime_loop.py`（252行）、`loop_models.py`（34行）、`loop_signal_executor.py`（136行），均符合 <300 行约束。
+- [x] 已新增 8 项自动化测试 `tests/test_realtime_loop.py`，覆盖初始化、行情拉取、K 线持久化、信号执行、错误处理、迭代控制、工厂方法。
+- [x] 全量测试通过：`170 passed, 54 warnings`。
+- [x] 用户验证通过（2026-02-19）。
