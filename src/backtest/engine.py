@@ -11,6 +11,8 @@ from src.backtest.result_builder import AnalyzerResultBuilder
 from src.backtest.result_models import BacktestRunRequest, BacktestRunResult, TradeRecord
 from src.core.database import SQLiteDatabase
 from src.data.feed import BacktestDataSlice, SQLiteFeedError, SQLitePandasFeedFactory
+from src.strategies.param_resolver import StrategyParamResolver
+from src.strategies.registry import StrategyRegistry
 
 
 class BacktestEngineError(RuntimeError):
@@ -28,6 +30,8 @@ class BacktestEngine:
         commission_rate: float,
         slippage_rate: float,
         data_read_source: str = "sqlite",
+        strategies_config: Mapping[str, Any] | None = None,
+        strategy_registry: StrategyRegistry | None = None,
     ) -> None:
         self._database = database
         self._initial_capital = self._validate_positive_number(
@@ -44,6 +48,12 @@ class BacktestEngine:
         )
         self._data_read_source = self._validate_data_source(data_read_source)
         self._feed_factory = SQLitePandasFeedFactory(database)
+        self._strategy_registry = strategy_registry or StrategyRegistry.default()
+        self._param_resolver = (
+            StrategyParamResolver(strategies_config, self._strategy_registry)
+            if strategies_config is not None
+            else None
+        )
 
     @classmethod
     def from_config(cls, database: SQLiteDatabase, config: Mapping[str, Any]) -> "BacktestEngine":
@@ -114,7 +124,10 @@ class BacktestEngine:
             return _TradeRecordWrapper
 
         wrapped_strategy = _make_wrapper(strategy_class)
-        cerebro.addstrategy(wrapped_strategy, **dict(request.strategy_params))
+        params = dict(request.strategy_params)
+        if self._param_resolver is not None:
+            params = self._param_resolver.resolve_for_class(strategy_class, params)
+        cerebro.addstrategy(wrapped_strategy, **params)
 
         cerebro.broker.setcash(self._initial_capital)
         cerebro.broker.setcommission(commission=self._commission_rate)

@@ -10,6 +10,7 @@ import pytest
 
 from src.backtest.engine import BacktestEngine, BacktestEngineError, BacktestRunRequest
 from src.core.database import SQLiteDatabase
+from src.strategies.registry import StrategyRegistry, StrategySpec
 
 
 class BuyThenSellStrategy(bt.Strategy):
@@ -124,3 +125,50 @@ def test_backtest_engine_raises_when_no_candles_in_requested_range(
 
     with pytest.raises(BacktestEngineError, match="No candle data"):
         engine.run(request)
+
+
+class ParamSpyStrategy(bt.Strategy):
+    params = (("threshold", 1),)
+    last_threshold = None
+
+    def __init__(self):
+        ParamSpyStrategy.last_threshold = self.params.threshold
+
+
+def test_backtest_engine_applies_config_params(sqlite_database: SQLiteDatabase) -> None:
+    registry = StrategyRegistry(
+        {
+            "spy_strategy": StrategySpec(
+                name="spy_strategy",
+                strategy_class=ParamSpyStrategy,
+                allowed_params=("threshold",),
+            )
+        }
+    )
+    strategies_config = {
+        "spy_strategy": {
+            "enabled": True,
+            "params": {"threshold": 42},
+        }
+    }
+
+    engine = BacktestEngine(
+        database=sqlite_database,
+        initial_capital=10_000.0,
+        commission_rate=0.0,
+        slippage_rate=0.0,
+        strategies_config=strategies_config,
+        strategy_registry=registry,
+    )
+
+    request = BacktestRunRequest(
+        symbol="BTC/USDT",
+        timeframe="1h",
+        start_timestamp=1_700_000_000_000,
+        end_timestamp=1_700_000_010_800,
+        strategy_class=ParamSpyStrategy,
+        strategy_params={},
+    )
+
+    engine.run(request)
+    assert ParamSpyStrategy.last_threshold == 42
