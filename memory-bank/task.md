@@ -37,7 +37,7 @@
 - [x] 28. Output backtest results <!-- id: 27 -->
 - [x] 29. Implement real-time simulation loop <!-- id: 28 -->
 - [x] 30. Implement strategy adapter <!-- id: 29 -->
-- [ ] 31. Implement Dual MA strategy <!-- id: 30 -->
+- [x] 31. Implement Dual MA strategy <!-- id: 30 -->
 - [ ] 32. Implement Grid strategy <!-- id: 31 -->
 - [ ] 33. Implement Bollinger Bands strategy <!-- id: 32 -->
 - [ ] 34. Implement strategy parameter management <!-- id: 33 -->
