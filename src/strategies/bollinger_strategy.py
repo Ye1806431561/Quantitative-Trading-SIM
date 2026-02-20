@@ -1,10 +1,10 @@
 """布林带策略（Bollinger Bands Strategy）。
 
-内置策略实现：价格触碰轨道时产生交易信号。
-- 价格低于下轨：买入（简化均值回归）
-- 价格高于上轨：卖出
+内置策略实现：价格回升/回落确认后产生交易信号。
+- 价格下穿下轨并回升：买入
+- 价格上穿上轨并回落：平仓
 - 价格回到中轨：平仓
-本实现采用简化逻辑：价格低于下轨买入，高于上轨卖出/平仓，回到中轨平仓。
+本实现采用回升/回落确认逻辑，避免单根穿越误触发。
 支持回测模式与实时模式运行。
 """
 
@@ -35,7 +35,8 @@ class BollingerStrategy(bt.Strategy):
         self.bb = bt.indicators.BollingerBands(
             self.data.close, period=self.params.period, devfactor=self.params.dev
         )
-        
+        self.was_below_lower = False
+        self.was_above_upper = False
         # 用于跟踪当前未完成订单
         self.order: bt.Order | None = None
 
@@ -45,25 +46,35 @@ class BollingerStrategy(bt.Strategy):
         if self.order:
             return
 
+        if self.data.close[0] < self.bb.lines.bot[0]:
+            self.was_below_lower = True
+        if self.data.close[0] > self.bb.lines.top[0]:
+            self.was_above_upper = True
+
         # 检查是否已持仓
         if not self.position:
-            # 未持仓且价格低于下轨，买入（均值回归：预期反弹回中轨）
-            if self.data.close[0] < self.bb.lines.bot[0]:
-                logger.debug(
-                    f"BB Buy Signal: Price({self.data.close[0]:.2f}) < Lower({self.bb.lines.bot[0]:.2f})"
-                )
+            # 未持仓且价格从下向上越过下轨，且当前价格回升（均值回归确认）
+            if (
+                self.was_below_lower
+                and self.data.close[0] >= self.bb.lines.bot[0]
+                and self.data.close[0] > self.data.close[-1]
+            ):
+                logger.debug("BB Buy Signal: Price rebounded above Lower band")
                 self.order = self.buy(size=self.params.position_size)
+                self.was_below_lower = False
         else:
             # 已持仓
-            # 1. 价格高于上轨，卖出平仓
-            if self.data.close[0] > self.bb.lines.top[0]:
-                logger.debug(
-                    f"BB Sell Signal (Upper): Price({self.data.close[0]:.2f}) > Upper({self.bb.lines.top[0]:.2f})"
-                )
+            # 1. 价格从上向下越过上轨，平仓
+            if (
+                self.was_above_upper
+                and self.data.close[0] <= self.bb.lines.top[0]
+                and self.data.close[0] < self.data.close[-1]
+            ):
+                logger.debug("BB Close Signal (Upper): Price pulled back below Upper band")
                 self.order = self.close()
+                self.was_above_upper = False
             # 2. 价格回归到中轨，平仓（止盈）
-            elif (self.position.size > 0 and self.data.close[0] >= self.bb.lines.mid[0]) or \
-                 (self.position.size < 0 and self.data.close[0] <= self.bb.lines.mid[0]):
+            elif self.data.close[0] >= self.bb.lines.mid[0]:
                 logger.debug(
                     f"BB Close Signal (Mid): Price({self.data.close[0]:.2f}) reached Mid({self.bb.lines.mid[0]:.2f})"
                 )
