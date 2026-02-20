@@ -8,6 +8,7 @@ from src.strategies.base import (
     StrategyTradeEvent,
 )
 from src.strategies.lifecycle_demo_strategy import LifecycleProbeStrategy
+from src.strategies.sma_strategy import SMAStrategy
 
 __all__ = [
     "LiveStrategy",
@@ -16,4 +17,5 @@ __all__ = [
     "StrategyOrderEvent",
     "StrategyTradeEvent",
     "LifecycleProbeStrategy",
+    "SMAStrategy",
 ]

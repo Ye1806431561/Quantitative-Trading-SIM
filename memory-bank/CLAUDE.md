@@ -276,7 +276,7 @@ tar -czf logs_backup_$(date +%Y%m%d).tar.gz logs/
 
 4. **Refactoring Triggers**:
    - If a file exceeds 250 lines → **MUST** split immediately
-   - If a class has > 10 methods → Consider splitting into multiple classes
+   - If a class has > 10 methods → ensure splitting into multiple classes
    - If you need to scroll > 3 screens → File is too large
 
 5. **Import Structure**:
@@ -689,11 +689,11 @@ Strategy adapter will automatically convert backtest strategies to live mode.
 - Stable API
 - Industry standard for crypto trading
 
-### What to Avoid
-- **No FastAPI/Flask** in Phase 1 (CLI-first approach)
-- **No Redis** (SQLite sufficient for data volume)
-- **No Docker** (local development tool)
-- **No TA-Lib** (Backtrader has built-in indicators, avoid compilation dependencies)
+### Preferred Practices
+- **CLI-first approach**: Focus on robust command-line interface implementation for Phase 1.
+- **Local SQLite storage**: Use SQLite which is fully sufficient for the current data volume.
+- **Local environment focus**: Optimize for local development and execution.
+- **Native indicators**: Prioritize Backtrader's built-in indicators to minimize secondary dependencies like TA-Lib.
 
 ## Performance Expectations
 
@@ -739,7 +739,7 @@ Strategy adapter will automatically convert backtest strategies to live mode.
   ```
 - **Query optimization**: Always filter by `symbol` and `timeframe` first
 - **Data retention**: Implement cleanup policy to remove old candles (e.g., > 2 years)
-- **Vacuum regularly**: Run `VACUUM` to reclaim space after deletions
+- **Vacuum frequency**: Run `VACUUM` after large deletions or once a week to reclaim space and maintain performance.
 
 ### Crash Recovery & Data Consistency
 - **Atomic Updates**: Always update `positions` and `trades` in same transaction
@@ -781,7 +781,7 @@ Strategy adapter will automatically convert backtest strategies to live mode.
 - Config files: lowercase with underscores
 - Data files: `{SYMBOL}_{TIMEFRAME}.csv`
 
-### 🚨 Anti-Patterns to AVOID
+### 🚨 Code Review Standards: Modular Design
 
 #### ❌ FORBIDDEN: Monolithic Files
 ```python
@@ -914,7 +914,7 @@ src/
 - This is a **paper trading system** - results do not guarantee real trading performance
 - Always test strategies thoroughly before considering real trading
 - Keep API keys secure even for testnet/paper trading
-- Regularly backup the SQLite database file
+- Perform weekly backups of the SQLite database file.
 - Monitor log files for errors and warnings
 - Use version control for strategy code
 - **Monitor disk usage**: Logs and database can grow large over time

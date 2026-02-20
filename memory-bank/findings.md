@@ -205,6 +205,7 @@
 | Sharpe 比率保留 `None` 语义 | 区分"未计算"与"计算结果为零"，便于上层服务判断数据有效性 |
 | `TimeReturn` 键转换为 ISO 字符串 | 支持 JSON 序列化，便于结果导出与 API 返回（第 28 步前置准备） |
 | `profit_factor` 全赢时返回 `None` | 修正语义错误（原返回 0.0），`None` 表示无亏损交易（无限大），与 Sharpe 的 `None` 语义保持一致 |
+| 新增内置系统策略开发基线（`sma_strategy.py`） | 作为向 Backtrader 接口与自有模拟引擎统一的标准范例，内置快慢交叉与持仓管理，验证内置函数功能支持的完整性 |
 
 ## Issues Encountered
 <!-- 
@@ -358,3 +359,15 @@
   - 实现策略信号执行：支持 market/limit/stop_loss/take_profit 四种订单类型，解析策略返回的信号字典并调用对应撮合引擎。
   - 测试覆盖：8 项验收测试（循环初始化、市场数据拉取、K 线持久化、信号执行、错误处理、迭代控制、工厂方法），全量测试通过（8 passed, 8 warnings）。
   - 快速验证脚本 `tests/quick_test_loop.py` 验证基本功能正常（3 次迭代，策略运行 3 次）。
+
+### 第 30 步发现与决策：Strategy Adapter 实现与修复（2026-02-19）
+- **设计决策**: 适配器基于 "Run-on-Audit" 模式运行，保障历史指标与回测计算一致，接受 `O(N)` 计算换取实时态策略的高度可复用。
+- **关键问题与修复记录 (P0-P2)**:
+  - **Warmup 短路**：原代码依赖 `context.parameters` 中的 `storage_service` 而短路返回。**修复**：移除短路判定，直接加载 `warmup_candles`。
+  - **历史重放信号泄漏**：通过 `len(self) == len(self.data)` 判定的条件在每次 `next()` 执行时都为真，导致历史信号外泄。**修复**：使用闭包捕获 Cerebro 的 `total_bars`，仅 `len(self) == total_bars` 时执行信号提取，实现时间序列的右侧精确隔离。
+  - **引擎协议不一致**：`RealtimeSimulationLoop` 返回 snapshot，而 `BacktraderAdapter` 期待 OHLCV 数据格，且未提供强制的 `amount` 参数。**修复**：增加 `_snapshot_to_ohlcv` 动态构建 K 线；默认将适配器参数 `position_size` 或 BT的`size` 映射为 `amount` 参数传递。
+  - **非法执行类型映射**：原方案中的 `close/stop` 未能有效触发生效。**修复**：将 `close` 映射为 `sell`、将 `BT Order.Stop` 映射为 `stop_loss`。
+  - **无资金阻断执行**：Cerebro 默认携带小额现金（1万），因现金不足无法对高价值资产发生持仓构建。**修复**：分配巨额伪造资金 `cerebro.broker.setcash(1e12)`，以确保任何价位都能强制成交，达成信号触发。
+  - **指标崩溃**：在历史记录无法达成指标窗口期（如 3 根 K 线计算 5 周期 SMA）抛出 `IndexError`。**修复**：使用 `try/except` 包裹 `cerebro.run()`，捕获 `IndexError` 和 `ValueError` 作为安全降级反馈 `None`（等待数据累积）。
+- **信号一致性证明**：成功运行 `TestSignalConsistency::test_sma_signal_matches_backtest`，在相同伪造数据流下证明 Cerebro 直接回测与 LiveStrategy 的信号在每一帧都对齐一致。
+</command>

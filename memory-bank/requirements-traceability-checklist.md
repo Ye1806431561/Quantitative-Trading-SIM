@@ -425,3 +425,12 @@
 - [x] 已新增 8 项自动化测试 `tests/test_realtime_loop.py`，覆盖初始化、行情拉取、K 线持久化、信号执行、错误处理、迭代控制、工厂方法。
 - [x] 全量测试通过：`170 passed, 54 warnings`。
 - [x] 用户验证通过（2026-02-19）。
+
+## 第30步验收检查（已通过）
+
+- [x] 已实现策略适配器 `BacktraderAdapter`（`src/strategies/adapter.py`），采用 "Run-on-Audit" 模式运行。
+- [x] 适配器支持通过 `warmup_candles` 参数加载预热历史数据。
+- [x] 输出信号与 `RealtimeSimulationLoop` 兼容，包含 `amount` 和映射的 `type`，正确拦截当前 bar 的 `buy/sell/close` 动作。
+- [x] 已新增自动化测试 `tests/test_strategy_adapter.py`（13项测试），充分测试了预热流、历史数据隔离以及与 Backtrader 产生的信号一致性。
+- [x] 代码和测试已通过全量回归（183 passed, 0 failed）。
+- [x] 用户验收已通过（包含各项 P0-P2 修复验证）。
