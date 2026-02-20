@@ -198,6 +198,9 @@
 | 新增 `risk.py` 统一下单前风控检查 | 将单笔仓位/总仓位/最大回撤收敛到一个模块，三类下单入口共享同一拒单口径 |
 | 新增 `LiveStrategy` 生命周期基类 + `StrategyLifecycleDriver` | 将生命周期状态守卫与回调触发责任分离，先完成第 25 步契约验证，再承接第 26/29 步引擎接入 |
 | 新增 `SQLitePandasFeedFactory`（`src/data/feed.py`） | 将 SQLite 读取与 PandasData 适配独立封装，保持回测引擎职责单一并便于后续复用 |
+| 新增策略注册表 + 参数解析器 | 回测与实时共用统一入口，避免参数合并逻辑重复与优先级漂移 |
+| 参数优先级：默认 < 配置 < 显式参数 | 允许临时试参且保持配置为基线，显式参数覆盖配置以满足调参需求 |
+| 实时策略工厂 `create_live_strategy()` | 集中策略实例化与参数注入逻辑，保证实时路径与回测路径一致 |
 | 新增 `backtest.data_read_source=sqlite` 双层校验 | 同时在配置校验层与引擎运行层拒绝 CSV/Parquet 运行态读取，固化 DC-002 约束 |
 | 分析器挂载与结果提取封装为独立模块 `analyzers.py` | 避免引擎文件过大，并将"分析器管理"与"回测执行"职责解耦 |
 | 分析器结果转换为应用层数据类（`TradeStatistics`/`RiskMetrics`/`ReturnsAnalysis`） | 统一 Backtrader 不一致的分析器输出结构，便于上层服务消费与 JSON 序列化 |

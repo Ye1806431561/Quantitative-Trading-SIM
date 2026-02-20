@@ -144,6 +144,7 @@
   - **第 12 步修正**：`orders` 表的 `created_at` 和 `updated_at` 字段从 `TIMESTAMP` 改为 `INTEGER`，避免 SQLite `PARSE_DECLTYPES` 解析冲突
 - 优先级规则已固定为 `默认值 < YAML < 环境变量`，并通过独立测试文件验证三组场景，后续配置演进可直接复用同一验收模式。
 - 通过“未知字段拒绝 + 参数关系校验”将配置错误前置到启动阶段，减少运行中故障面。
+- 第 34 步新增策略参数管理：`StrategyRegistry` + `StrategyParamResolver` 统一参数合并入口，显式参数覆盖配置；实时循环将合并参数注入 `StrategyContext.parameters`。
 - 第 7 步日志方案已直接消费 `load_config()` 产出的 `logging` 配置，避免重复解析配置逻辑。
 - 第 9 步已完成并通过验证；下一步（第 10 步）应仅推进领域模型与校验规则定义，不提前进入账户/订单流程实现。
 - 第 11 步已完成并通过验证：
