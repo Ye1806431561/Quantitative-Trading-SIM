@@ -3,11 +3,11 @@
 此文档仅保留最新进度摘要及当前目标。历史记录已按天归档至 `memory-bank/progress_archive/` 目录中。
 
 ## 当前目标
-- 第 34 步已完成，等待验证。
-- 未明确验证通过前，不启动第 35 步。
+- 第 34 步已验证通过。
+- 第 35 步尚未开始（等待启动）。
 
 ## 未解决问题清单
-- 第 34 步待验证（策略参数管理生效验证）。
+- 第 35 步尚未开始：性能分析模块待实现。
 
 ## 历史归档
 - [2026-02-15](progress_archive/2026-02-15.md)
@@ -15,6 +15,7 @@
 - [2026-02-17](progress_archive/2026-02-17.md)
 - [2026-02-18](progress_archive/2026-02-18.md)
 - [2026-02-19](progress_archive/2026-02-19.md)
+- [2026-02-20](progress_archive/2026-02-20.md)
 
 ## 最近的关键变更
 
@@ -180,13 +181,18 @@
   - `tests/test_strategy_factory.py`
   - `tests/test_backtest_engine.py::test_backtest_engine_applies_config_params`
   - `tests/test_realtime_loop.py::test_loop_passes_strategy_params_to_context`
+- 用户校验修复：
+  - `StrategyParamResolver` 统一校验配置与显式参数的未知参数，避免配置层漏检。
+  - `RealtimeSimulationLoop.from_config()` 补充 `strategy_params` 透传，保证上下文参数不丢失。
 
 ### 测试结果
 - `PYTHONPATH=/Users/pingu/Documents/Quantitative-Trading-SIM/.worktrees/step-34-strategy-config /Users/pingu/Documents/Quantitative-Trading-SIM/.venv/bin/pytest -q /Users/pingu/Documents/Quantitative-Trading-SIM/.worktrees/step-34-strategy-config/tests/test_strategy_param_resolver.py` → `3 passed`
 - `PYTHONPATH=/Users/pingu/Documents/Quantitative-Trading-SIM/.worktrees/step-34-strategy-config /Users/pingu/Documents/Quantitative-Trading-SIM/.venv/bin/pytest -q /Users/pingu/Documents/Quantitative-Trading-SIM/.worktrees/step-34-strategy-config/tests/test_backtest_engine.py::test_backtest_engine_applies_config_params` → `1 passed`
 - `PYTHONPATH=/Users/pingu/Documents/Quantitative-Trading-SIM/.worktrees/step-34-strategy-config /Users/pingu/Documents/Quantitative-Trading-SIM/.venv/bin/pytest -q /Users/pingu/Documents/Quantitative-Trading-SIM/.worktrees/step-34-strategy-config/tests/test_strategy_factory.py` → `1 passed`
 - `PYTHONPATH=/Users/pingu/Documents/Quantitative-Trading-SIM/.worktrees/step-34-strategy-config /Users/pingu/Documents/Quantitative-Trading-SIM/.venv/bin/pytest -q /Users/pingu/Documents/Quantitative-Trading-SIM/.worktrees/step-34-strategy-config/tests/test_realtime_loop.py::test_loop_passes_strategy_params_to_context` → `1 passed`
+- 全量测试：`PYTHONPATH=/Users/pingu/Documents/Quantitative-Trading-SIM/.worktrees/step-34-strategy-config /Users/pingu/Documents/Quantitative-Trading-SIM/.venv/bin/pytest -q /Users/pingu/Documents/Quantitative-Trading-SIM/.worktrees/step-34-strategy-config/tests` → `204 passed, 54 warnings`
 
 ### 验收状态
 - Phase 3 第 34 步代码实现已完成，自动化测试通过。
-- 等待用户验证通过前，不启动第 35 步。
+- 用户已验证通过（2026-02-20）。
+- 第 35 步尚未开始。

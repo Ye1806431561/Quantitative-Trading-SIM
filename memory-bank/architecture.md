@@ -1,9 +1,10 @@
 # Architecture Notes
 
-## 当前阶段定位（2026-02-19）
+## 当前阶段定位（2026-02-20）
 
-- 仓库已完成 `implementation-plan.md` Phase 0 第 1-7 条，Phase 1 第 8-16 条，Phase 2 第 17-24 条与 Phase 3 第 25-29 条代码落地。
-- 当前处于"Phase 3 推进、第 29 步已实现并验证通过"阶段：实时模拟主循环已落地，整合了所有已实现的组件（市场数据、策略、撮合、风控、持仓管理）。
+- 仓库已完成 `implementation-plan.md` Phase 0 第 1-7 条，Phase 1 第 8-16 条，Phase 2 第 17-24 条与 Phase 3 第 25-34 条代码落地。
+- 当前处于"Phase 3 已收尾，第 34 步已验证通过"阶段：策略参数管理已打通回测与实时路径。
+- 第 35 步尚未开始（性能分析模块待实现）。
 - 最小交付范围仍锁定为 CLI + 模拟盘（回测与实时模拟），Web 能力保留为可选项且暂不交付。
 - **第 29 步实现与验证**：`src/live/realtime_loop.py` 实现完整的实时模拟主循环（行情拉取→策略执行→下单→撮合→持仓更新），全量测试 8 passed。实时模式的数据读取路径符合约束：先将最新行情落 SQLite，策略可从 SQLite 读取历史数据；CSV/Parquet 不参与运行态读写。
 
@@ -72,7 +73,10 @@
 - `src/data/realtime_payloads.py`：实时行情统一返回结构与载荷归一化工具，确保三类接口结构一致（第 17 步）。
 - `src/strategies/base.py`：第 25 步策略生命周期接口实现（初始化/运行/停止/订单回调/成交回调）与状态守卫。
 - `src/strategies/lifecycle_demo_strategy.py`：第 25 步最小示例策略，实现生命周期钩子触发记录。
-- `src/strategies/*.py`（其余）：内置策略占位，用于承接第 30-33 步。
+- `src/strategies/registry.py`：第 34 步策略注册表，统一策略名 → 类映射与允许参数集合。
+- `src/strategies/param_resolver.py`：第 34 步参数解析器，合并配置与显式参数并统一校验。
+- `src/strategies/factory.py`：第 34 步实时策略工厂，基于配置生成 `BacktraderAdapter` 并返回合并参数。
+- `src/strategies/*.py`（其余）：内置策略实现（第 30-33 步）。
 - `src/backtest/engine.py`：第 26-27 步 Backtrader 回测引擎实现（`BacktestEngine`），负责 Cerebro 装配、策略执行、标准分析器挂载与统一结果输出（`BacktestRunResult` 包含基础统计 + 5 个分析器输出）。
 - `src/backtest/analyzers.py`：第 27 步分析器挂载模块（`AnalyzerMount`），负责挂载 5 个标准分析器（Sharpe、DrawDown、TradeAnalyzer、Returns、TimeReturn）并提取结果。
 - `src/backtest/result_models.py`：第 27 步回测结果数据模型（`BacktestRunResult`、`TradeStatistics`、`RiskMetrics`、`ReturnsAnalysis`），定义统一的回测输出结构。

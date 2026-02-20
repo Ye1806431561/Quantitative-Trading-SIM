@@ -38,9 +38,9 @@
 - [x] 29. Implement real-time simulation loop <!-- id: 28 -->
 - [x] 30. Implement strategy adapter <!-- id: 29 -->
 - [x] 31. Implement Dual MA strategy <!-- id: 30 -->
-- [ ] 32. Implement Grid strategy <!-- id: 31 -->
-- [ ] 33. Implement Bollinger Bands strategy <!-- id: 32 -->
-- [ ] 34. Implement strategy parameter management <!-- id: 33 -->
+- [x] 32. Implement Grid strategy <!-- id: 31 -->
+- [x] 33. Implement Bollinger Bands strategy <!-- id: 32 -->
+- [x] 34. Implement strategy parameter management <!-- id: 33 -->
 
 ## Phase 4: Interfaces, Monitoring & Quality
 - [ ] 35. Implement performance analysis module <!-- id: 34 -->

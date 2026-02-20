@@ -1,9 +1,9 @@
-# 需求追踪清单（Phase 0-3 / Step 1-29）
+# 需求追踪清单（Phase 0-3 / Step 1-34）
 
 ## 说明
 - 来源文档：`memory-bank/product-requirement-document.md`
 - 目标：将需求逐项映射到模块与交付物，并标记范围（必选/可选）
-- 状态：已完成实施计划第 1-29 步代码与文档落地（第 29 步已验证通过），第 30 步未开始
+- 状态：已完成实施计划第 1-34 步代码与文档落地（第 34 步已验证通过），第 35 步未开始
 
 ## 最小可用范围（MVP）定义
 
@@ -51,7 +51,7 @@
 | FR-STR-05 | 回测策略继承 `backtrader.Strategy` | `src/backtest/engine.py`, `src/strategies/*.py` | 回测策略模板 | 必选 | - |
 | FR-STR-06 | 实时策略继承 `LiveStrategy` | `src/strategies/base.py`, `src/live/simulator.py` | 实时策略模板 | 必选 | - |
 | FR-STR-07 | 内置策略：SMA / 网格 / 布林带 | `src/strategies/sma_strategy.py`, `src/strategies/grid_strategy.py`, `src/strategies/bollinger_strategy.py` | 三个内置策略模块 | 必选 | - |
-| FR-STR-08 | 策略参数配置与优化接口 | `config/strategies.yaml`, `src/backtest/optimizer.py` | 参数加载与优化入口 | 必选 | - |
+| FR-STR-08 | 策略参数配置与优化接口 | `config/strategies.yaml`, `src/strategies/registry.py`, `src/strategies/param_resolver.py`, `src/strategies/factory.py`, `src/backtest/optimizer.py` | 参数加载与优化入口 | 必选 | - |
 | FR-RSK-01 | 单笔交易最大金额限制 | `src/core/risk.py` | 下单前风控检查 | 必选 | - |
 | FR-RSK-02 | 总仓位比例控制 | `src/core/risk.py` | 总仓位限制规则 | 必选 | - |
 | FR-RSK-03 | 单币种持仓限制 | `src/core/risk.py` | 符号级持仓限制 | 必选 | - |

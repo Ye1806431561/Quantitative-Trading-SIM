@@ -19,9 +19,8 @@
 -->
 <!-- Captured from user request -->
 
-- 阅读 `memory-bank/` 全部文档后，执行 `implementation-plan.md` 第 27 步。
-- 第 27 步内容：挂载标准分析器（夏普、回撤、交易统计、收益率、时间序列收益），统一结果结构。
-- 用户负责运行测试；在用户确认第 27 步通过前，不启动第 28 步。
+- 第 34 步已完成并通过用户验证，需要同步 `memory-bank/` 文档状态。
+- 在用户明确指示前，不启动第 35 步开发。
 
 ## Research Findings
 <!-- 
@@ -201,6 +200,8 @@
 | 新增策略注册表 + 参数解析器 | 回测与实时共用统一入口，避免参数合并逻辑重复与优先级漂移 |
 | 参数优先级：默认 < 配置 < 显式参数 | 允许临时试参且保持配置为基线，显式参数覆盖配置以满足调参需求 |
 | 实时策略工厂 `create_live_strategy()` | 集中策略实例化与参数注入逻辑，保证实时路径与回测路径一致 |
+| `StrategyParamResolver` 同时校验配置与显式参数 | 防止配置层误拼写参数绕过校验，确保策略参数严格一致 |
+| `RealtimeSimulationLoop.from_config()` 透传 `strategy_params` | 避免工厂方法丢失策略参数导致上下文为空 |
 | 新增 `backtest.data_read_source=sqlite` 双层校验 | 同时在配置校验层与引擎运行层拒绝 CSV/Parquet 运行态读取，固化 DC-002 约束 |
 | 分析器挂载与结果提取封装为独立模块 `analyzers.py` | 避免引擎文件过大，并将"分析器管理"与"回测执行"职责解耦 |
 | 分析器结果转换为应用层数据类（`TradeStatistics`/`RiskMetrics`/`ReturnsAnalysis`） | 统一 Backtrader 不一致的分析器输出结构，便于上层服务消费与 JSON 序列化 |
