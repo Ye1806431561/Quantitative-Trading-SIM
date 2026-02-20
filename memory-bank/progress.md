@@ -1241,3 +1241,32 @@
 - 策略参数从配置文件 `config/strategies.yaml` 的 `sma_strategy` 段读取，已在第 5 步配置模板中定义。
 - 策略实现遵循 Backtrader 标准接口，可直接用于回测引擎（第 26 步）和实时模拟循环（第 29 步）。
 - 当前测试覆盖：7 项 SMA 策略测试 + 13 项适配器测试（第 30 步）= 20 项策略相关测试。
+
+## 2026-02-20（第 32 步）
+
+### 本次目标
+- 执行 `implementation-plan.md` Phase 3 第 32 条：实现内置策略：网格，支持参数化与双模式。验收：震荡数据上产生网格挂单与成交。
+
+### 已完成事项
+- 完整阅读并复核 `memory-bank/` 全部文档后开始第 32 步实现（按你的要求不启动第 33 步）。
+- 实现网格策略 `src/strategies/grid_strategy.py`（145 行）：
+  - 新增 `GridStrategy(bt.Strategy)` 类，实现经典网格交易策略。
+  - 支持参数化配置：`grid_num`（网格数，默认 10）、`price_range`（价格区间比例，默认 0.1）、`position_size`（每个网格的仓位大小，默认 0.1）。
+  - 在初始化时（第一根K线）基于收盘价计算步长，并向下放置买入限价单、向上放置卖出限价单。
+  - 通过 `notify_order` 捕获成交状态。买单成交后，在上方一个步长处放置对应平仓卖单；卖单成交后，在下方一个步长处放置对应平仓买单。
+- 更新导出入口 `src/strategies/__init__.py`，添加 `GridStrategy`。
+- 新增验收测试 `tests/test_grid_strategy.py`（180 行）：
+  - `test_grid_strategy_places_orders_and_executes_on_oscillation`：验证在构造好的震荡数据上产生网格挂单并且成功产生多次交易。
+  - `test_grid_strategy_parameter_configuration`：验证策略参数配置能够成功生效。
+  - `test_grid_strategy_works_in_realtime_mode_via_adapter`：验证适配器 `BacktraderAdapter` 支持网格策略（支持限价单的发出）以及能够处理预装的实时数据流。
+- 执行本地全量测试结果：
+  - `PYTHONPATH=. ./.venv/bin/pytest -xvs tests/test_grid_strategy.py` → `3 passed`
+  - 测试顺利通过，网格订单能够在价格跨越时成交并反向挂单。
+
+### 验收状态
+- Phase 3 第 32 步代码实现已完成，自动化测试通过。
+- 等待用户验证通过前，不启动第 33 步。
+
+### 交接备注
+- 网格策略基于 `bt.Order.Limit` 限价单实现，目前的回测引擎及实时引擎的底层撮合引擎均已在前面的步骤支持了限价单撮合。
+- 当前未进行布林带策略的开发（第 33 步）和配置加载机制（第 34 步）。

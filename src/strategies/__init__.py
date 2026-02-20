@@ -9,6 +9,7 @@ from src.strategies.base import (
 )
 from src.strategies.lifecycle_demo_strategy import LifecycleProbeStrategy
 from src.strategies.sma_strategy import SMAStrategy
+from src.strategies.grid_strategy import GridStrategy
 
 __all__ = [
     "LiveStrategy",
@@ -18,4 +19,5 @@ __all__ = [
     "StrategyTradeEvent",
     "LifecycleProbeStrategy",
     "SMAStrategy",
+    "GridStrategy",
 ]
