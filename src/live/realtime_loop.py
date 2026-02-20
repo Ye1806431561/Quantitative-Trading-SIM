@@ -106,6 +106,7 @@ class RealtimeSimulationLoop:
         timeframe: str,
         tick_interval_seconds: float = 1.0,
         max_iterations: int | None = None,
+        strategy_params: Mapping[str, Any] | None = None,
     ) -> "RealtimeSimulationLoop":
         """Factory method to construct loop from system config."""
         account_service = AccountService.from_config(database, config)
@@ -145,6 +146,7 @@ class RealtimeSimulationLoop:
             candle_storage=candle_storage,
             strategy=strategy,
             config=loop_config,
+            strategy_params=strategy_params,
             cost_profile=cost_profile,
             risk_limits=risk_limits,
         )

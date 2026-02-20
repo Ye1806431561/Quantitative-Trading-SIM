@@ -27,10 +27,12 @@ class StrategyParamResolver:
         config_params = dict(config_entry.get("params", {}))
         merged = dict(config_params)
         if explicit_params:
-            unknown = set(explicit_params.keys()) - set(spec.allowed_params)
-            if unknown:
-                raise StrategyParamError(f"unknown parameter(s): {sorted(unknown)}")
             merged.update(explicit_params)
+            
+        unknown = set(merged.keys()) - set(spec.allowed_params)
+        if unknown:
+            raise StrategyParamError(f"unknown parameter(s): {sorted(unknown)}")
+            
         return merged
 
     def resolve_for_class(

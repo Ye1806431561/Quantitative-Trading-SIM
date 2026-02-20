@@ -55,3 +55,13 @@ def test_resolver_rejects_disabled_strategy():
 
     with pytest.raises(StrategyParamError, match="disabled"):
         resolver.resolve_for_name("grid_strategy", {})
+
+
+def test_resolver_rejects_unknown_param_in_config():
+    config = _base_config()
+    config["sma_strategy"]["params"]["unknown"] = 1
+    registry = StrategyRegistry.default()
+    resolver = StrategyParamResolver(config, registry)
+
+    with pytest.raises(StrategyParamError, match="unknown parameter"):
+        resolver.resolve_for_name("sma_strategy")
