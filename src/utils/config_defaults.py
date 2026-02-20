@@ -101,7 +101,7 @@ DEFAULT_STRATEGIES_CONFIG: dict[str, Any] = {
     },
     "bollinger_strategy": {
         "enabled": False,
-        "params": {"period": 20, "std_dev": 2.0, "position_size": 0.2},
+        "params": {"period": 20, "dev": 2.0, "position_size": 0.2},
     },
 }
 

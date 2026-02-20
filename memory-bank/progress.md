@@ -104,7 +104,6 @@
 - 按你的要求，等待你执行并确认测试通过前，不启动第 32 步（网格策略）。
 
 ### 交接备注
-- 第 31 步仅实现双均线策略，网格策略（第 32 步）和布林带策略（第 33 步）尚未开始。
 - 双均线策略已验证支持双模式：回测模式（Backtrader Cerebro）+ 实时模式（BacktraderAdapter）。
 - 策略参数从配置文件 `config/strategies.yaml` 的 `sma_strategy` 段读取，已在第 5 步配置模板中定义。
 - 策略实现遵循 Backtrader 标准接口，可直接用于回测引擎（第 26 步）和实时模拟循环（第 29 步）。
@@ -139,22 +138,24 @@
 - 网格策略基于 `bt.Order.Limit` 限价单实现，目前的回测引擎及实时引擎的底层撮合引擎均已在前面的步骤支持了限价单撮合。
 
 ## 2026-02-20（第 33 步）
-145: ### 本次目标
-146: - 执行 `implementation-plan.md` Phase 3 第 33 条：实现内置策略：布林带，支持参数化与双模式。验收：波动数据上按阈值触发交易。
-147: 
-148: ### 已完成事项
-149: - 完整阅读并复核 `memory-bank/` 全部文档后开始第 33 步实现。
-150: - 实现布林带策略 `src/strategies/bollinger_strategy.py`（84 行）：
-151:   - 新增 `BollingerStrategy(bt.Strategy)` 类。
-152:   - 逻辑：价格跌破下轨买入，回归中轨或突破上轨平仓。
-153:   - 参数：`period`(20), `dev`(2.0), `position_size`(0.2)。
-154: - 导出至 `src/strategies/__init__.py`。
-155: - 新增测试 `tests/test_bollinger_strategy.py`：
-156:   - `test_bollinger_strategy_triggers_trades_on_volatility`：回测模式下单笔交易验证。
-157:   - `test_bollinger_strategy_parameter_configuration`：参数生效验证。
-158:   - `test_bollinger_strategy_works_in_realtime_mode_via_adapter`：实时模式信号触发验证。
-159: - 测试结果：`3 passed`。
-160: 
-161: ### 验收状态
-162: - Phase 3 第 33 步代码实现已完成，单元测试通过。
-163: - 等待用户验证通过前，不启动第 34 步。
+
+### 本次目标
+- 执行 `implementation-plan.md` Phase 3 第 33 条：实现内置策略：布林带，支持参数化与双模式。验收：波动数据上按阈值触发交易。
+
+### 已完成事项
+- 完整阅读并复核 `memory-bank/` 全部文档后开始第 33 步实现。
+- 实现布林带策略 `src/strategies/bollinger_strategy.py`：
+  - 新增 `BollingerStrategy(bt.Strategy)` 类。
+  - 逻辑：价格下穿下轨并回升买入；价格上穿上轨并回落平仓；价格回到中轨平仓。
+  - 参数：`period`(20), `dev`(2.0), `position_size`(0.2)。
+- 导出至 `src/strategies/__init__.py`。
+- 新增测试 `tests/test_bollinger_strategy.py`：
+  - `test_bollinger_strategy_triggers_trades_on_volatility`：回测模式下单笔交易验证。
+  - `test_bollinger_strategy_parameter_configuration`：参数生效验证。
+  - `test_bollinger_strategy_no_trade_without_rebound`：无回升不交易验证。
+  - `test_bollinger_strategy_works_in_realtime_mode_via_adapter`：实时模式信号触发验证。
+- 测试结果：`4 passed`。
+
+### 验收状态
+- Phase 3 第 33 步代码实现已完成，单元测试通过。
+- 等待用户验证通过前，不启动第 34 步。

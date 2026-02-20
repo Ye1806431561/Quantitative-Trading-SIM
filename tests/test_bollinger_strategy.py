@@ -63,8 +63,8 @@ def test_bollinger_strategy_triggers_trades_on_volatility():
     cerebro.broker.setcash(100_000.0)
     cerebro.broker.setcommission(commission=0.001)
 
-    # period=20, std_dev=2.0
-    cerebro.addstrategy(BollingerStrategy, period=20, std_dev=2.0, position_size=0.2)
+    # period=20, dev=2.0
+    cerebro.addstrategy(BollingerStrategy, period=20, dev=2.0, position_size=0.2)
 
     data_feed = bt.feeds.PandasData(dataname=df)
     cerebro.adddata(data_feed)
@@ -85,7 +85,7 @@ def test_bollinger_strategy_parameter_configuration():
     df = _generate_volatile_data(num_bars=30)
 
     cerebro = bt.Cerebro()
-    cerebro.addstrategy(BollingerStrategy, period=10, std_dev=1.5, position_size=0.5)
+    cerebro.addstrategy(BollingerStrategy, period=10, dev=1.5, position_size=0.5)
 
     data_feed = bt.feeds.PandasData(dataname=df)
     cerebro.adddata(data_feed)
@@ -95,8 +95,43 @@ def test_bollinger_strategy_parameter_configuration():
     strategy = strategies[0]
 
     assert strategy.params.period == 10
-    assert strategy.params.std_dev == 1.5
+    assert strategy.params.dev == 1.5
     assert strategy.params.position_size == 0.5
+
+
+def test_bollinger_strategy_no_trade_without_rebound():
+    """下穿不回升时不应触发交易。"""
+    timestamps = pd.date_range(start="2024-01-01", periods=50, freq="1h")
+    prices = []
+    for i in range(50):
+        if i < 30:
+            price = 100.0 + (i % 3 - 1) * 0.5
+        else:
+            price = 90.0
+        prices.append(price)
+
+    df = pd.DataFrame(
+        {
+            "datetime": timestamps,
+            "open": prices,
+            "high": [p * 1.01 for p in prices],
+            "low": [p * 0.99 for p in prices],
+            "close": prices,
+            "volume": [1000.0] * 50,
+        }
+    ).set_index("datetime")
+
+    cerebro = bt.Cerebro()
+    cerebro.broker.setcash(100_000.0)
+    cerebro.addstrategy(BollingerStrategy, period=20, dev=2.0, position_size=0.2)
+    cerebro.adddata(bt.feeds.PandasData(dataname=df))
+    cerebro.addanalyzer(bt.analyzers.TradeAnalyzer, _name="trades")
+
+    strategy = cerebro.run()[0]
+    total_trades = (
+        strategy.analyzers.trades.get_analysis().get("total", {}).get("total", 0)
+    )
+    assert total_trades == 0, "无回升时不应触发交易"
 
 
 def test_bollinger_strategy_works_in_realtime_mode_via_adapter():
@@ -122,7 +157,7 @@ def test_bollinger_strategy_works_in_realtime_mode_via_adapter():
         timeframe="1h",
         parameters={
             "period": 20,
-            "std_dev": 2.0,
+            "dev": 2.0,
             "position_size": 0.2,
             "warmup_candles": warmup_ohlcv,
         },
@@ -133,7 +168,7 @@ def test_bollinger_strategy_works_in_realtime_mode_via_adapter():
         bt_strategy_cls=BollingerStrategy,
         bt_params={
             "period": 20,
-            "std_dev": 2.0,
+            "dev": 2.0,
             "position_size": 0.2,
         },
         lookback_window=100,

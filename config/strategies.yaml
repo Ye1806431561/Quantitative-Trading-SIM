@@ -19,5 +19,5 @@ bollinger_strategy:
   enabled: false
   params:
     period: 20
-    std_dev: 2.0
+    dev: 2.0
     position_size: 0.2
