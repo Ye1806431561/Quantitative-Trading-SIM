@@ -19,6 +19,8 @@ env/
 .vscode/
 .history/
 
+.worktrees/
+
 logs/*.log
 logs/*.zip
 data/database/*.db
