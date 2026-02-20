@@ -30,10 +30,12 @@ class MockStrategy(LiveStrategy):
         self.run_called_count = 0
         self.stop_called = False
         self.last_market_data = None
+        self.last_context = None
         self.signal_to_return = None
 
     def on_initialize(self, context: StrategyContext) -> None:
         self.initialize_called = True
+        self.last_context = context
 
     def on_run(self, market_data: Mapping[str, Any]) -> Mapping[str, Any] | None:
         self.run_called_count += 1
@@ -258,6 +260,41 @@ def test_loop_stops_when_max_iterations_reached(realtime_loop):
     assert realtime_loop.iteration_count == 3
 
 
+def test_loop_passes_strategy_params_to_context(database, mock_market_service):
+    account_service = AccountService(database, base_currency="USDT")
+    account_service.initialize_accounts({"USDT": 10000.0, "BTC": 0.0})
+
+    order_service = OrderService(database, account_service)
+    trade_service = TradeService(database, order_service)
+    price_service = PriceService(database, account_service, mock_market_service)
+    candle_storage = HistoricalCandleStorage(database, mock_market_service.get_klines)
+
+    strategy = MockStrategy()
+    config = RealtimeLoopConfig(
+        symbol="BTC/USDT",
+        timeframe="1m",
+        tick_interval_seconds=0.01,
+        max_iterations=1,
+    )
+
+    loop = RealtimeSimulationLoop(
+        database=database,
+        account_service=account_service,
+        order_service=order_service,
+        trade_service=trade_service,
+        market_service=mock_market_service,
+        price_service=price_service,
+        candle_storage=candle_storage,
+        strategy=strategy,
+        config=config,
+        strategy_params={"fast_period": 5},
+    )
+
+    loop.start()
+    assert strategy.last_context is not None
+    assert strategy.last_context.parameters["fast_period"] == 5
+
+
 def test_loop_from_config_factory_method(database, mock_market_service):
     """Verify loop can be constructed from config dict."""
     config = {
@@ -306,4 +343,3 @@ def test_loop_from_config_factory_method(database, mock_market_service):
 
     assert strategy.initialize_called
     assert loop.iteration_count == 2
-

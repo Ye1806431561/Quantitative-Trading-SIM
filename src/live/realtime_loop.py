@@ -36,6 +36,7 @@ class RealtimeSimulationLoop:
         candle_storage: HistoricalCandleStorage,
         strategy: LiveStrategy,
         config: RealtimeLoopConfig,
+        strategy_params: Mapping[str, Any] | None = None,
         cost_profile: ExecutionCostProfile | None = None,
         risk_limits: RiskLimits | None = None,
     ) -> None:
@@ -48,6 +49,7 @@ class RealtimeSimulationLoop:
         self._candle_storage = candle_storage
         self._strategy = strategy
         self._config = config
+        self._strategy_params = dict(strategy_params or {})
         self._cost_profile = cost_profile or ExecutionCostProfile()
         self._risk_limits = risk_limits
 
@@ -156,7 +158,7 @@ class RealtimeSimulationLoop:
             strategy_id=f"{self._strategy.name}_{self._config.symbol}_{int(time.time())}",
             symbol=self._config.symbol,
             timeframe=self._config.timeframe,
-            parameters={},
+            parameters=self._strategy_params,
         )
         self._strategy.initialize(context)
         self._running = True
