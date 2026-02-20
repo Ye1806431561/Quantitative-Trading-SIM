@@ -140,7 +140,7 @@ def validate_strategies_config(config: dict[str, Any]) -> None:
     _require_int_value(boll_params, "bollinger_strategy.params.period", min_value=1)
     _require_number_value(
         boll_params,
-        "bollinger_strategy.params.std_dev",
+        "bollinger_strategy.params.dev",
         min_value=0.0,
         inclusive_min=False,
     )

@@ -3,7 +3,7 @@
 ## Scope
 - Track progress archive in git
 - Align Bollinger strategy to rebound/pullback rules
-- Rename std_dev to dev across config/code/tests
+- Rename stddev to dev across config/code/tests
 - Clean progress.md line-number pollution
 
 ## Behavior
