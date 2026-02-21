@@ -81,6 +81,7 @@ def test_runtime_required_arguments_validation(
 def test_start_stop_status_and_disk(cli_files: dict[str, Path]) -> None:
     assert _run_cli(cli_files, "startup") == 0
     assert _run_cli(cli_files, "status") == 0
+    assert _run_cli(cli_files, "status", "--alerts") == 0
     assert _run_cli(cli_files, "status", "--disk") == 0
     assert _run_cli(cli_files, "stop") == 0
 

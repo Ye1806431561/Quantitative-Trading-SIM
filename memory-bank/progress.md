@@ -6,10 +6,11 @@
 - 第 35 步已验收通过。
 - 第 36 步已验收通过（含 `datetime` 时间戳兼容修复与回归测试补齐）。
 - 第 37 步已验收通过（CLI 命令集合）。
-- 第 38 步未开始（等待启动）。
+- 第 38 步已验收通过（运行状态与监控输出）。
+- 第 39 步未开始。
 
 ## 未解决问题清单
-- 暂无阻塞问题（可按计划启动第 38 步）。
+- 暂无。
 
 ## 历史归档
 - [2026-02-15](progress_archive/2026-02-15.md)
@@ -20,6 +21,56 @@
 - [2026-02-20](progress_archive/2026-02-20.md)
 
 ## 最近的关键变更
+
+## 2026-02-21（第 38 步）
+
+### 本次目标
+- 执行 `implementation-plan.md` Phase 4 第 38 条：实现运行状态与监控输出（策略状态、账户变化、异常告警），并提供日志与状态查询接口。
+
+### 已完成事项
+- 新增运行监控模块：
+  - `src/live/monitor.py`：实现 `RuntimeMonitor`，持久化 `monitor_state.json`，统一记录策略状态、账户快照、告警事件、计数器。
+  - 支持监控字段：`strategy.status/iteration_count/last_error`、`account.total_assets`、`alerts`、`network_errors/reconnect_attempts/strategy_errors`。
+- 增强实时循环可观测性与隔离能力：
+  - `src/live/realtime_loop.py` 集成 `RuntimeMonitor`；
+  - 策略执行异常改为“记录告警 + 继续下一轮”，实现策略崩溃隔离；
+  - 行情异常记录网络类告警并计入重连尝试计数；
+  - 估值失败、信号执行失败、通知失败均写入监控告警，避免静默吞错。
+- 增强 CLI 状态查询接口：
+  - `src/cli.py`：`status` 新增 `--alerts` 参数；
+  - `src/cli_commands.py`：`status` 输出监控摘要（strategy_status、alerts_total、total_assets、credentials_encrypted），`--alerts` 输出最近告警列表；
+  - `src/cli_context.py`：新增 `read_monitor_state()` 与 `credential_storage_status()`。
+- 增强实时运行态状态文件更新：
+  - `src/cli_workflows.py`：`live` 命令启动与结束时写入 `runtime_state.json`（含 mode、strategy、symbol、iteration_count）。
+- 新增 API 密钥加密存储能力：
+  - `src/utils/credential_vault.py`：实现加密写入 `system.data_dir/secure/exchange_credentials.enc.json`，支持完整性校验与解密读取；
+  - 当配置提供 API 凭证但缺少 `CONFIG_MASTER_KEY` 时，CLI 启动阶段显式拒绝并给出可解释错误。
+  - `config/.env.example` 增加 `CONFIG_MASTER_KEY` 模板字段。
+- 新增第 38 步测试：
+  - `tests/test_monitoring.py`：覆盖监控状态查询、告警输出、凭证加密存储、日志脱敏、网络重试恢复、策略崩溃隔离。
+  - `tests/test_cli_runtime.py`：补充 `status --alerts` 基础可用性回归。
+- 第 38 步补充修复（审查后）：
+  - `src/cli_context.py`：新增启动期凭证回填与强校验逻辑；当检测到 Vault 存在但 `CONFIG_MASTER_KEY` 缺失时，CLI 启动阶段直接 fail-fast，避免运行到交易链路时才暴露鉴权失败。
+  - `src/live/realtime_loop.py`：修复实时 K 线落库策略，改为“按 timeframe 分箱 + 同桶 OHLC 合并”：
+    - 同一时间桶使用 `ON CONFLICT` 更新 `high/low/close`，保留首笔 `open`；
+    - 时间戳统一对齐到周期桶起点，避免 tick 级毫秒戳导致的 `candles` 表膨胀。
+  - 新增回归测试：
+    - `tests/test_cli_context_credentials.py`：覆盖“Vault 存在但缺主密钥启动失败”与“Vault 解密后回填运行态凭证”；
+    - `tests/test_realtime_candle_bucketing.py`：覆盖“同桶 OHLC 合并”与“时间戳按周期分箱”。
+
+### 测试结果
+- `PYTHONPATH=. ./.venv/bin/pytest -q` → `247 passed, 54 warnings`。
+
+### 验收状态
+- Phase 4 第 38 步验收验证中，发现并修复了以下主要逻辑错误：
+  1. **API 密钥只存不取**：`src/cli_context.py` 中 `build_context` 执行了凭证加密存储，但未将解密内容反写回内存 `config`。这会导致交易执行引擎在运行期无法获取凭证。已修复：在成功解密后将其重注入 `config["exchange"]`。
+  2. **K线无分箱直接入库导致严重冗余**：`src/live/realtime_loop.py` （被第 38 步涉及运行态机制）在执行 `_persist_latest_candle` 持久化最新 tick 时，误将实时精准的毫秒级时间戳直接存为 K 线时间戳，导致 `UNIQUE` 碰撞失效出现海量冗余蜡烛记录。已修复：按配置的 `timeframe` 规范对时间戳进行了分箱截断计算。
+- 当前分支自动化测试已重新执行完毕，全量测试均通过（247 passed）。
+- 第 38 步已通过用户验收（2026-02-21）。
+- 第 39 步未开始。
+### 交接备注
+- 第 38 步新增的监控状态文件为 `monitor_state.json`（位于 `system.data_dir`）。
+- `status --alerts` 已可直接查看最近告警。
 
 ## 2026-02-21（第 37 步）
 

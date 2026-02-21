@@ -24,7 +24,8 @@
 - 补齐两条正式 pytest 回归用例，覆盖 `datetime` 时间戳输入在性能分析与可视化路径下的兼容性。
 - 第 37 步已完成并通过用户验收（CLI 命令集合）。
 - 第 37 步已补充显式断言：`backtest --output-dir` 同时导出报告与 4 张图表。
-- 第 38 步尚未启动。
+- 第 38 步已完成并通过用户验收（运行状态与监控输出、凭证加密存储、CLI 告警查询）。
+- 第 39 步尚未启动。
 
 ## Research Findings
 <!-- 
@@ -152,6 +153,14 @@
   - 条件参数（如限价单必须 `--price`）不能只依赖 argparse 静态定义，需在命令处理器中增加显式业务校验。
   - 新增显式回归断言：`backtest --output-dir` 必须导出 6 个报告文件与 4 张 PNG 图表文件。
   - 第 37 步验收版测试结果：`tests/test_cli_runtime.py + tests/test_cli_workflows.py` 为 `18 passed`，全量回归 `237 passed, 54 warnings`。
+- **Step 38 实现发现（2026-02-21）**：
+  - 实时监控需要独立状态文件（`monitor_state.json`）而非复用 `runtime_state.json`，否则策略状态、告警事件与账户快照无法稳定共存并历史回看。
+  - 网络/估值/策略/信号执行/通知异常应统一写入监控告警并继续循环，避免“单次异常导致主循环终止”的可用性风险。
+  - 凭证安全策略应“启动即校验”：当配置含 API key/secret 时，若缺失 `CONFIG_MASTER_KEY` 应立即拒绝运行，避免凭证明文落盘。
+  - CLI `status` 需要汇总运行态、监控态、凭证加密态三类信息，`status --alerts` 用于快速定位最近告警，不再依赖手工查日志。
+  - 补充修复：当配置不含明文凭证但 Vault 文件存在时，`build_context()` 必须在启动阶段要求 `CONFIG_MASTER_KEY` 并完成解密回填，避免运行时才出现鉴权失败。
+  - 补充修复：实时 K 线落库需按 `timeframe` 分箱，并在同桶内合并 OHLC；若按 tick 毫秒直写会破坏 UNIQUE 去重并导致数据库膨胀。
+  - 第 38 步补充修复后本地验证结果：`PYTHONPATH=. ./.venv/bin/pytest -q` 为 `247 passed, 54 warnings`。
 
 ## Technical Decisions
 <!-- 
@@ -252,6 +261,12 @@
 | CLI 采用 `argparse` 子命令 + 多处理器拆分 | 既满足缺参返回码与帮助信息要求，也满足单文件 <300 行约束 |
 | 运行状态持久化到 `runtime_state.json` | `start/stop/status` 可跨进程共享状态，避免仅内存态导致重启后状态丢失 |
 | 为 `backtest --output-dir` 增加文件级显式断言 | 防止未来回归只导出报告不导出图表，保证 CLI 导出链路完整 |
+| 新增 `RuntimeMonitor` 独立持久化 `monitor_state.json` | 将策略状态、账户快照、告警与计数器统一记录，便于 CLI 查询与故障追踪 |
+| 实时循环异常采用“记录告警并继续”策略 | 将网络/策略/执行异常从致命错误降级为可观测事件，提高实时模拟可用性与隔离性 |
+| API 凭证采用 `CONFIG_MASTER_KEY` 加密落盘 | 避免凭证明文存储；通过完整性校验防止文件篡改，满足安全需求 |
+| CLI `status` 增加监控与凭证加密态摘要 | 单命令查看运行状态、告警数量与 `credentials_encrypted`，降低排障成本 |
+| Vault 存在时在启动阶段强制主密钥与解密回填 | 避免“配置无明文凭证但运行时才鉴权失败”的延迟故障，启动即暴露配置问题 |
+| 实时 K 线采用“timeframe 分箱 + ON CONFLICT 聚合 OHLC” | 保持 `candles` 唯一键稳定命中，防止 tick 级写入导致数据库行数爆炸 |
 
 ## Issues Encountered
 <!-- 
@@ -291,6 +306,10 @@
 | 旧测试仅断言 `total_return`，未覆盖年化/Sharpe 口径 | 扩展 `tests/test_performance_analysis.py`，增加 `annualized_return` 与 `sharpe_ratio` 回归断言 |
 | 可视化导出在空交易数据场景易退化为无输出 | 在无交易场景渲染占位文本并照常导出图片，确保产物完整 |
 | `datetime` 时间戳输入在分析/可视化路径会报类型错误 | 双模块 `_parse_timestamp` 增加 `datetime` 支持，并补充两条正式 pytest 回归用例 |
+| 配置含 API 凭证但未设置主密钥时存在明文落盘风险 | 在 `build_context()` 启动阶段强制执行 `persist_exchange_credentials()`，缺失 `CONFIG_MASTER_KEY` 立即报错阻断 |
+| 实时循环内部异常此前仅日志输出，CLI 难以追踪 | 新增 `RuntimeMonitor` 告警通道，按类别记录网络/估值/策略/执行异常并提供 `status --alerts` 查询 |
+| 配置无明文凭证但 Vault 已存在时可能静默丢失交易凭证 | 新增启动期 fail-fast（缺主密钥即拒绝启动）并在成功解密后回填到运行态配置 |
+| 实时行情按毫秒戳直写 `candles` 会造成伪 K 线爆炸 | 改为按周期分箱并对同桶执行 OHLC 聚合更新，确保写入口径与 K 线语义一致 |
 
 ## Resources
 <!-- 
@@ -319,11 +338,17 @@
 - `src/cli_commands.py`
 - `src/cli_order_commands.py`
 - `src/cli_workflows.py`
+- `src/live/monitor.py`
+- `src/utils/credential_vault.py`
 - `tests/test_performance_analysis.py`
 - `tests/test_visualization.py`
 - `tests/test_cli_runtime.py`
 - `tests/test_cli_workflows.py`
+- `tests/test_monitoring.py`
+- `tests/test_cli_context_credentials.py`
+- `tests/test_realtime_candle_bucketing.py`
 - `config/config.yaml`
+- `config/.env.example`
 - `src/utils/config_defaults.py`
 - `src/utils/config_validation.py`
 - `tests/test_config.py`

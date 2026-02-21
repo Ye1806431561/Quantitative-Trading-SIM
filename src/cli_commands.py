@@ -12,7 +12,9 @@ from rich.table import Table
 from src.cli_context import (
     CLICommandError,
     CLIContext,
+    credential_storage_status,
     console,
+    read_monitor_state,
     read_runtime_state,
     write_runtime_state,
 )
@@ -51,6 +53,8 @@ def handle_stop(ctx: CLIContext, _args: Any) -> int:
 
 def handle_status(ctx: CLIContext, args: Any) -> int:
     state = read_runtime_state(ctx.config)
+    monitor = read_monitor_state(ctx.config)
+    secure_status = credential_storage_status(ctx.config)
 
     with ctx.database.transaction() as tx:
         metrics = {
@@ -67,9 +71,21 @@ def handle_status(ctx: CLIContext, args: Any) -> int:
     table.add_column("值", justify="right")
     table.add_row("running", str(bool(state.get("running"))))
     table.add_row("database", str(ctx.database.database_path))
+    strategy = monitor.get("strategy", {}) if isinstance(monitor, dict) else {}
+    counters = monitor.get("counters", {}) if isinstance(monitor, dict) else {}
+    account = monitor.get("account", {}) if isinstance(monitor, dict) else {}
+    table.add_row("strategy_status", str(strategy.get("status", "idle")))
+    table.add_row("strategy_iterations", str(strategy.get("iteration_count", 0)))
+    table.add_row("alerts_total", str(counters.get("alerts_total", 0)))
+    if account.get("total_assets") is not None:
+        table.add_row("total_assets", f"{float(account.get('total_assets', 0.0)):.8f}")
+    table.add_row("credentials_encrypted", str(bool(secure_status.get("encrypted"))))
     for key, value in metrics.items():
         table.add_row(key, str(value))
     console.print(table)
+
+    if args.alerts:
+        _print_recent_alerts(monitor)
 
     if args.disk:
         _print_disk_status(ctx.database.database_path)
@@ -213,6 +229,31 @@ def _print_disk_status(database_path: Path) -> None:
     table.add_row("disk_total_bytes", str(disk.total))
     table.add_row("disk_used_bytes", str(disk.used))
     table.add_row("disk_free_bytes", str(disk.free))
+    console.print(table)
+
+
+def _print_recent_alerts(monitor: dict[str, Any]) -> None:
+    alerts = monitor.get("alerts")
+    table = Table(title="最近告警")
+    table.add_column("timestamp_ms")
+    table.add_column("level")
+    table.add_column("category")
+    table.add_column("message")
+
+    if not isinstance(alerts, list) or not alerts:
+        table.add_row("-", "-", "-", "暂无告警")
+        console.print(table)
+        return
+
+    for item in alerts[-10:]:
+        if not isinstance(item, dict):
+            continue
+        table.add_row(
+            str(item.get("timestamp_ms", "-")),
+            str(item.get("level", "-")),
+            str(item.get("category", "-")),
+            str(item.get("message", "-")),
+        )
     console.print(table)
 
 
