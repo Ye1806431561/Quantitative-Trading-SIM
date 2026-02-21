@@ -222,8 +222,8 @@ class OrderService:
             if new_filled > order.amount:
                 raise OrderServiceError("filled amount cannot exceed order amount")
 
-            # Release frozen funds for rejected buy orders
-            if new_status == OrderStatus.REJECTED and order.side == OrderSide.BUY:
+            # Release frozen funds for rejected/canceled buy orders
+            if new_status in (OrderStatus.REJECTED, OrderStatus.CANCELED) and order.side == OrderSide.BUY:
                 unfilled_amount = order.amount - new_filled
                 if unfilled_amount > 0:
                     if order.price is None:
@@ -242,22 +242,8 @@ class OrderService:
                     raise OrderServiceError("cannot consume funds: order price is None")
                 funds_to_consume = filled_delta * order.price
                 base_currency = self._extract_quote_currency(order.symbol)
-                
-                # Consume from frozen funds (reduce both frozen and balance)
                 try:
-                    account = self._account_service.get_account(base_currency)
-                    if account.frozen < funds_to_consume:
-                        raise OrderServiceError("insufficient frozen funds to consume")
-                    
-                    # Manually update account: reduce frozen and balance
-                    tx.execute(
-                        """
-                        UPDATE accounts
-                        SET frozen = frozen - ?, balance = balance - ?, updated_at = CURRENT_TIMESTAMP
-                        WHERE currency = ?;
-                        """,
-                        (funds_to_consume, funds_to_consume, base_currency),
-                    )
+                    self._consume_frozen_funds(tx, base_currency, funds_to_consume)
                 except Exception as e:
                     raise OrderServiceError(f"failed to consume funds for filled portion: {e}") from e
 
@@ -344,12 +330,34 @@ class OrderService:
         return parts[1].strip()
 
     @staticmethod
+    def _consume_frozen_funds(tx, currency: str, amount: float) -> None:
+        """Consume frozen funds (reduce both frozen and balance) within a transaction."""
+        if amount <= 0:
+            raise OrderServiceError("amount must be > 0")
+        row = tx.execute(
+            "SELECT balance, available, frozen FROM accounts WHERE currency = ?;",
+            (currency,),
+        ).fetchone()
+        if row is None:
+            raise OrderServiceError(f"account not found: {currency}")
+        if row["frozen"] < amount:
+            raise OrderServiceError("insufficient frozen funds to consume")
+        tx.execute(
+            """
+            UPDATE accounts
+            SET frozen = frozen - ?, balance = balance - ?, updated_at = CURRENT_TIMESTAMP
+            WHERE currency = ?;
+            """,
+            (amount, amount, currency),
+        )
+
+    @staticmethod
     def _is_valid_transition(current: OrderStatus, new: OrderStatus) -> bool:
         """Validate order status transition."""
         valid_transitions = {
-            OrderStatus.PENDING: {OrderStatus.OPEN, OrderStatus.REJECTED},
+            OrderStatus.PENDING: {OrderStatus.OPEN, OrderStatus.REJECTED, OrderStatus.CANCELED},
             OrderStatus.OPEN: {OrderStatus.PARTIALLY_FILLED, OrderStatus.FILLED, OrderStatus.CANCELED},
-            OrderStatus.PARTIALLY_FILLED: {OrderStatus.FILLED, OrderStatus.CANCELED},
+            OrderStatus.PARTIALLY_FILLED: {OrderStatus.PARTIALLY_FILLED, OrderStatus.FILLED, OrderStatus.CANCELED},
             OrderStatus.FILLED: set(),
             OrderStatus.CANCELED: set(),
             OrderStatus.REJECTED: set(),
