@@ -352,12 +352,12 @@
   - 状态机校验：定义合法流转表，拒绝非法状态转换。
   - 资金管理：买单创建时冻结资金，部分成交时消耗冻结资金，取消时释放剩余冻结资金。
 - 修复 `orders` 表结构：将 `created_at` 和 `updated_at` 从 `TIMESTAMP` 改为 `INTEGER`（存储毫秒级时间戳），避免 SQLite `PARSE_DECLTYPES` 解析冲突。
-- 新增 `tests/test_order_service.py`，覆盖 21 项验收测试：
+- 新增 `tests/test_order_service.py`，覆盖 24 项验收测试：
   - 订单创建：冻结资金、参数校验、资金不足拒绝、`order_id` 幂等校验。
   - 订单查询：按 ID、按 symbol、按 status、limit 分页。
   - 状态更新：合法流转、非法流转拒绝、filled 超限拒绝。
   - 订单撤销：释放冻结资金、部分成交后释放剩余、幂等性。
-- 全量测试通过：59 passed（含 21 项订单服务测试、38 项之前的测试）。
+- 全量测试通过：62 passed（3 warnings，含 24 项订单服务测试、38 项之前的测试）。
 
 ### 验收状态
 - Phase 1 第 12 条已完成且全量测试通过。

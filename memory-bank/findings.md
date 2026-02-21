@@ -18,7 +18,7 @@
     - Python implementation
 -->
 <!-- Captured from user request -->
-- 阅读 `memory-bank/` 全部文档后，执行 `implementation-plan.md` 第 1-12 步。
+- 阅读 `memory-bank/` 全部文档后，执行 `implementation-plan.md` 第 12 步。
 - 第 12 步内容：实现订单持久化接口（创建、查询、状态更新、撤销），保证幂等与一致性（创建幂等需提供 `order_id`）。
 - 验证通过后，更新 `progress.md` 等文档，准备进入第 13 步（交易记录写入与订单关联）。
 
@@ -46,7 +46,7 @@
   - 买单资金管理分三阶段：创建时冻结（available→frozen）、部分成交时消耗（frozen 和 balance 同时减少）、取消时释放剩余（frozen→available）。
   - `orders` 表的 `created_at` 和 `updated_at` 字段使用 `TIMESTAMP` 类型会与 SQLite `PARSE_DECLTYPES` 冲突，改为 `INTEGER` 存储毫秒级时间戳。
   - 幂等性设计：当调用方提供 `order_id` 时，重复创建返回现有订单；重复取消已终态订单返回当前状态。
-  - 全量测试 59 passed（含 21 项订单服务测试 + 38 项之前的测试）。
+  - 全量测试 62 passed（3 warnings，含 24 项订单服务测试 + 38 项之前的测试）。
 
 ## Technical Decisions
 <!-- 

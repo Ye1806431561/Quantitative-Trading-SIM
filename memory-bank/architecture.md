@@ -5,7 +5,7 @@
 - 当前处于"Phase 1 进行中、待进入第 13 步"阶段：订单服务已通过验收（`OrderService`），交易记录写入尚未开始。
 - 最小交付范围仍锁定为 CLI + 模拟盘（回测与实时模拟），Web 能力保留为可选项且暂不交付。
 - **第 11 步验证发现与修复**：`require_timestamp()` 原先仅接受数值类型，但 SQLite `PARSE_DECLTYPES` 将 `TIMESTAMP` 列解析为 `datetime` 对象，导致测试失败。已修复 `src/core/validation.py` 兼容三种时间戳来源（数值、`datetime` 对象、ISO 字符串），全量测试 38 passed。
-- **第 12 步实现与修复**：实现订单持久化服务（`OrderService`），修复 `orders` 表时间戳字段类型（`TIMESTAMP` → `INTEGER`），实现完整的订单状态机与资金管理（冻结/消耗/释放），全量测试 59 passed。
+- **第 12 步实现与修复**：实现订单持久化服务（`OrderService`），修复 `orders` 表时间戳字段类型（`TIMESTAMP` → `INTEGER`），实现完整的订单状态机与资金管理（冻结/消耗/释放），全量测试 62 passed（3 warnings）。
 
 ## 文件作用说明（`memory-bank/`）
 
@@ -101,4 +101,4 @@
   - 实现完整的订单状态机：定义合法流转表（PENDING→OPEN→PARTIALLY_FILLED→FILLED/CANCELED），拒绝非法状态转换。
   - 实现完整的资金管理：买单创建时冻结资金，部分成交时消耗冻结资金（从 frozen 和 balance 同时扣除），取消时释放剩余冻结资金。
   - 支持幂等性：当调用方提供 `order_id` 时重复创建返回现有订单；重复取消已终态订单返回当前状态。
-  - 全量测试 59 passed（含 `test_order_service` 21 项 + 之前 38 项）。
+  - 全量测试 62 passed（3 warnings，含 `test_order_service` 24 项 + 之前 38 项）。
