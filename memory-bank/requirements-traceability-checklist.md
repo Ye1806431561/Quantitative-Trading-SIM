@@ -1,9 +1,9 @@
-# 需求追踪清单（Phase 0-1 / Step 1-10）
+# 需求追踪清单（Phase 0-1 / Step 1-12）
 
 ## 说明
 - 来源文档：`memory-bank/product-requirement-document.md`
 - 目标：将需求逐项映射到模块与交付物，并标记范围（必选/可选）
-- 状态：已完成实施计划第 1-10 步，且第 10 步已验证通过（第 11 步未开始）
+- 状态：已完成实施计划第 1-12 步，且第 12 步已验证通过（第 13 步未开始）
 
 ## 最小可用范围（MVP）定义
 
@@ -165,3 +165,23 @@
 - [x] 引入枚举消除魔法字符串：订单类型/方向/状态、交易方向、策略运行状态。
 - [x] 新增通用校验工具 `validation.py` 复用数值/时间戳/枚举校验。
 - [x] 自动化测试 `tests/test_models.py` 覆盖正反例并通过；全量测试 `PYTHONPATH=. ./.venv/bin/pytest -q` 通过（33 passed）。
+
+## 第11步验收检查（已通过）
+- [x] 已实现 `AccountService` 账户生命周期管理（`src/core/account_service.py`）。
+- [x] 支持多币种账户初始化（幂等）、余额查询、冻结/释放资金、消耗/增加可用余额。
+- [x] 支持从 `positions` 表恢复持仓状态（`load_positions()`）。
+- [x] 支持多币种总资产估值计算（`compute_total_assets()`），现金 + 持仓市值。
+- [x] 修复 `require_timestamp()` 兼容 SQLite `datetime` 对象（第 11 步验证发现）。
+- [x] 自动化测试 `tests/test_account.py` 覆盖 5 项验收测试；全量测试 38 passed。
+- [x] 用户验证通过（2026-02-17）。
+
+## 第12步验收检查（已通过）
+- [x] 已实现 `OrderService` 订单持久化接口（`src/core/order_service.py`）。
+- [x] 支持订单创建（`create_order()`）并冻结资金（买单），当调用方提供 `order_id` 时支持幂等性。
+- [x] 支持订单查询（`get_order()` / `list_orders()`），按 ID、symbol、status、limit 过滤。
+- [x] 支持订单状态更新（`update_order_status()`），含状态流转校验与部分成交时消耗冻结资金。
+- [x] 支持订单撤销（`cancel_order()`）并释放剩余冻结资金，支持幂等性。
+- [x] 实现订单状态机：定义合法流转表（PENDING→OPEN→PARTIALLY_FILLED→FILLED/CANCELED），拒绝非法状态转换。
+- [x] 修复 `orders` 表时间戳字段类型（`TIMESTAMP` → `INTEGER`），避免 SQLite `PARSE_DECLTYPES` 冲突。
+- [x] 自动化测试 `tests/test_order_service.py` 覆盖 21 项验收测试；全量测试 59 passed。
+- [x] 用户验证通过（2026-02-17）。
