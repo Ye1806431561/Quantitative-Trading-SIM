@@ -29,8 +29,8 @@ SCHEMA_STATEMENTS: tuple[str, ...] = (
         amount REAL NOT NULL,
         filled REAL DEFAULT 0,
         status TEXT NOT NULL,
-        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        created_at INTEGER,
+        updated_at INTEGER
     );
     """,
     """
