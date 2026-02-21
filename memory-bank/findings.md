@@ -46,6 +46,8 @@
   - 买单资金管理分三阶段：创建时冻结（available→frozen）、部分成交时消耗（frozen 和 balance 同时减少）、取消时释放剩余（frozen→available）。
   - `orders` 表的 `created_at` 和 `updated_at` 字段使用 `TIMESTAMP` 类型会与 SQLite `PARSE_DECLTYPES` 冲突，改为 `INTEGER` 存储毫秒级时间戳。
   - 幂等性设计：当调用方提供 `order_id` 时，重复创建返回现有订单；重复取消已终态订单返回当前状态。
+  - 拒单（REJECTED）与撤单一致释放冻结资金，避免资金长期锁定。
+  - `update_order_status()` 保持单层事务，避免嵌套 `with tx:` 造成事务语义偏差。
   - 全量测试 62 passed（3 warnings，含 24 项订单服务测试 + 38 项之前的测试）。
 
 ## Technical Decisions
@@ -69,6 +71,7 @@
 | 买单资金分阶段管理（冻结→消耗→释放） | 确保资金流转清晰可追溯，避免资金泄漏或重复扣款 |
 | `orders` 表时间戳字段使用 `INTEGER` | 避免 SQLite `PARSE_DECLTYPES` 自动解析 `TIMESTAMP` 为 `datetime` 对象，统一使用毫秒级整数 |
 | 订单服务支持幂等性（创建幂等需 `order_id`） | 防止重复操作导致的数据不一致，提高系统健壮性 |
+| 拒单释放冻结资金 | 与撤单一致，避免冻结资金长期占用 |
 
 ## Issues Encountered
 <!-- 
@@ -88,6 +91,7 @@
 | `orders` 表 `TIMESTAMP` 字段与 `PARSE_DECLTYPES` 冲突 | 将 `created_at` 和 `updated_at` 字段类型从 `TIMESTAMP` 改为 `INTEGER`，存储毫秒级时间戳 |
 | 测试初始资金不足导致订单创建失败 | 将测试 fixture 中的初始资金从 10000 USDT 增加到 100000 USDT |
 | 部分成交后取消订单的资金处理不清晰 | 明确资金管理逻辑：部分成交时消耗冻结资金（从 frozen 和 balance 同时扣除），取消时只释放剩余冻结资金 |
+| REJECTED 未释放冻结资金 | 在 `update_order_status()` 增加 REJECTED 释放冻结资金逻辑，并补测试覆盖 |
 
 ## Resources
 <!-- 

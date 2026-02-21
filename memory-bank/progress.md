@@ -347,15 +347,16 @@
   - `OrderService`：订单生命周期管理（创建、查询、状态更新、撤销）。
   - `create_order()`：创建订单并冻结资金（买单），当调用方提供 `order_id` 时支持幂等性。
   - `get_order()` / `list_orders()`：按 ID 查询或按条件过滤（symbol、status、limit）。
-  - `update_order_status()`：状态流转校验（PENDING→OPEN→PARTIALLY_FILLED→FILLED/CANCELED），部分成交时消耗冻结资金。
+  - `update_order_status()`：状态流转校验（PENDING→OPEN→PARTIALLY_FILLED→FILLED/CANCELED/REJECTED），部分成交时消耗冻结资金，REJECTED 释放冻结资金。
   - `cancel_order()`：撤销订单并释放未成交部分的冻结资金，支持幂等性。
   - 状态机校验：定义合法流转表，拒绝非法状态转换。
-  - 资金管理：买单创建时冻结资金，部分成交时消耗冻结资金，取消时释放剩余冻结资金。
+  - 资金管理：买单创建时冻结资金，部分成交时消耗冻结资金，取消或 REJECTED 时释放剩余冻结资金。
+  - 事务边界：移除 `update_order_status()` 内部嵌套 `with tx:`，保持单层事务。
 - 修复 `orders` 表结构：将 `created_at` 和 `updated_at` 从 `TIMESTAMP` 改为 `INTEGER`（存储毫秒级时间戳），避免 SQLite `PARSE_DECLTYPES` 解析冲突。
 - 新增 `tests/test_order_service.py`，覆盖 24 项验收测试：
   - 订单创建：冻结资金、参数校验、资金不足拒绝、`order_id` 幂等校验。
   - 订单查询：按 ID、按 symbol、按 status、limit 分页。
-  - 状态更新：合法流转、非法流转拒绝、filled 超限拒绝。
+  - 状态更新：合法流转、非法流转拒绝、filled 超限拒绝、REJECTED 释放冻结资金。
   - 订单撤销：释放冻结资金、部分成交后释放剩余、幂等性。
 - 全量测试通过：62 passed（3 warnings，含 24 项订单服务测试、38 项之前的测试）。
 
@@ -365,5 +366,7 @@
 
 ### 交接备注
 - 订单服务已实现完整的状态机与资金管理，可作为第 13 步交易记录写入的基础。
-- 订单状态流转与资金冻结/消耗/释放逻辑已通过 21 项测试固化，后续修改需同步更新测试。
+- 订单状态流转与资金冻结/消耗/释放逻辑已通过 24 项测试固化，后续修改需同步更新测试。
+- REJECTED 释放冻结资金与撤单一致，避免冻结资金长期占用。
+- `update_order_status()` 保持单层事务，避免嵌套 savepoint 带来的语义偏差。
 - 第 13 步需实现交易记录写入（`trades` 表）并与订单关联，包含手续费字段。

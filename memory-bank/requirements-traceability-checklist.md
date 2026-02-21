@@ -180,6 +180,8 @@
 - [x] 支持订单创建（`create_order()`）并冻结资金（买单），当调用方提供 `order_id` 时支持幂等性。
 - [x] 支持订单查询（`get_order()` / `list_orders()`），按 ID、symbol、status、limit 过滤。
 - [x] 支持订单状态更新（`update_order_status()`），含状态流转校验与部分成交时消耗冻结资金。
+- [x] 支持拒单（REJECTED）释放冻结资金，避免资金长期占用。
+- [x] `update_order_status()` 保持单层事务，移除嵌套 `with tx:`。
 - [x] 支持订单撤销（`cancel_order()`）并释放剩余冻结资金，支持幂等性。
 - [x] 实现订单状态机：定义合法流转表（PENDING→OPEN→PARTIALLY_FILLED→FILLED/CANCELED），拒绝非法状态转换。
 - [x] 修复 `orders` 表时间戳字段类型（`TIMESTAMP` → `INTEGER`），避免 SQLite `PARSE_DECLTYPES` 冲突。
