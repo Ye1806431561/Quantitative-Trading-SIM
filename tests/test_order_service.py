@@ -360,6 +360,28 @@ def test_update_order_status_rejects_filled_exceeding_amount(order_service):
         order_service.update_order_status(order.id, OrderStatus.PARTIALLY_FILLED, filled=1.5)
 
 
+def test_update_order_status_rejected_releases_frozen_funds(order_service, account_service):
+    """Test rejecting a buy order releases frozen funds."""
+    request = CreateOrderRequest(
+        symbol="BTC/USDT",
+        type=OrderType.LIMIT,
+        side=OrderSide.BUY,
+        amount=0.5,
+        price=50000.0,
+    )
+    order = order_service.create_order(request)
+
+    account_before = account_service.get_account("USDT")
+    assert account_before.frozen == 25000.0
+
+    rejected = order_service.update_order_status(order.id, OrderStatus.REJECTED)
+    assert rejected.status == OrderStatus.REJECTED
+
+    account_after = account_service.get_account("USDT")
+    assert account_after.frozen == 0.0
+    assert account_after.available == 100000.0
+
+
 # ------------------------------------------------------------------ #
 # Test order cancellation
 # ------------------------------------------------------------------ #

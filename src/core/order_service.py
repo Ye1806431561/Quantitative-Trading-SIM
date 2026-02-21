@@ -222,6 +222,19 @@ class OrderService:
             if new_filled > order.amount:
                 raise OrderServiceError("filled amount cannot exceed order amount")
 
+            # Release frozen funds for rejected buy orders
+            if new_status == OrderStatus.REJECTED and order.side == OrderSide.BUY:
+                unfilled_amount = order.amount - new_filled
+                if unfilled_amount > 0:
+                    if order.price is None:
+                        raise OrderServiceError("cannot release funds: order price is None")
+                    frozen_funds = unfilled_amount * order.price
+                    base_currency = self._extract_quote_currency(order.symbol)
+                    try:
+                        self._account_service.release_funds(base_currency, frozen_funds)
+                    except Exception as e:
+                        raise OrderServiceError(f"failed to release funds: {e}") from e
+
             # Consume frozen funds for filled portion (buy orders only)
             if order.side == OrderSide.BUY and new_filled > order.filled:
                 filled_delta = new_filled - order.filled
@@ -237,15 +250,14 @@ class OrderService:
                         raise OrderServiceError("insufficient frozen funds to consume")
                     
                     # Manually update account: reduce frozen and balance
-                    with tx:
-                        tx.execute(
-                            """
-                            UPDATE accounts
-                            SET frozen = frozen - ?, balance = balance - ?, updated_at = CURRENT_TIMESTAMP
-                            WHERE currency = ?;
-                            """,
-                            (funds_to_consume, funds_to_consume, base_currency),
-                        )
+                    tx.execute(
+                        """
+                        UPDATE accounts
+                        SET frozen = frozen - ?, balance = balance - ?, updated_at = CURRENT_TIMESTAMP
+                        WHERE currency = ?;
+                        """,
+                        (funds_to_consume, funds_to_consume, base_currency),
+                    )
                 except Exception as e:
                     raise OrderServiceError(f"failed to consume funds for filled portion: {e}") from e
 
