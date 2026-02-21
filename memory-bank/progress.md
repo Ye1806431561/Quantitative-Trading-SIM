@@ -4,10 +4,12 @@
 
 ## 当前目标
 - 第 35 步已验收通过。
-- 第 36 步尚未开始，等待你下达启动指令。
+- 第 36 步已验收通过（含 `datetime` 时间戳兼容修复与回归测试补齐）。
+- 第 37 步已验收通过（CLI 命令集合）。
+- 第 38 步未开始（等待启动）。
 
 ## 未解决问题清单
-- 第 36 步尚未开始（待启动）。
+- 暂无阻塞问题（可按计划启动第 38 步）。
 
 ## 历史归档
 - [2026-02-15](progress_archive/2026-02-15.md)
@@ -18,6 +20,88 @@
 - [2026-02-20](progress_archive/2026-02-20.md)
 
 ## 最近的关键变更
+
+## 2026-02-21（第 37 步）
+
+### 本次目标
+- 执行 `implementation-plan.md` Phase 4 第 37 条：实现 CLI 命令集合（启动、停止、状态、余额、订单、回测、下载、实时模拟、positions、import、export、cleanup、reconcile、status --disk）。
+
+### 已完成事项
+- 新增 CLI 主入口与命令分发：
+  - `src/cli.py`：统一参数解析与子命令路由；
+  - `main.py`：程序入口调用 CLI。
+- 新增 CLI 运行上下文与共享工具：
+  - `src/cli_context.py`：配置加载、数据库与核心服务装配、参数解析、时间范围解析、运行状态文件读写。
+- 新增系统/订单类命令处理：
+  - `src/cli_commands.py`：`start/startup`、`stop`、`status`（含 `--disk`）、`balance`、`positions`、`cleanup`、`reconcile`；
+  - `src/cli_order_commands.py`：`order place/list/cancel`，支持 `market/limit/stop_loss/take_profit` 下单路径。
+- 新增回测/数据/实时类命令处理：
+  - `src/cli_workflows.py`：`backtest`、`download`、`live`、`import`、`export`。
+- 参数校验与帮助信息覆盖：
+  - 为必须参数配置 `argparse` 级别校验（缺参返回可解释错误）；
+  - 对条件参数（如 `limit` 需 `--price`）增加命令级显式报错。
+- 运行态约束延续：
+  - 回测与实时读取路径维持 SQLite；
+  - `download/import/export/cleanup/reconcile` 全部围绕 SQLite `candles` 与交易表执行。
+- 新增 CLI 自动化测试：
+  - `tests/test_cli_runtime.py`（系统、状态、订单、reconcile）；
+  - `tests/test_cli_workflows.py`（backtest/download/live/import/export/cleanup）。
+
+### 测试结果
+- `PYTHONPATH=. ./.venv/bin/pytest -q tests/test_cli_runtime.py tests/test_cli_workflows.py` → `18 passed`。
+- `PYTHONPATH=. ./.venv/bin/pytest -q` → `237 passed, 54 warnings`。
+
+### 验收状态
+- Phase 4 第 37 步代码实现已完成并通过用户验收（2026-02-21）。
+- 已补充显式回归断言：`backtest --output-dir` 会同时导出 CSV/JSON 与 4 张 PNG 图表。
+- 第 38 步未开始。
+
+### 交接备注
+- 当前 CLI 已覆盖实施计划第 37 步要求的命令集合与参数校验。
+- 命令默认读取 `config/config.yaml`、`config/strategies.yaml`、`.env`，也支持通过 `--config/--strategies/--env` 覆盖路径。
+
+## 2026-02-21（第 36 步）
+
+### 本次目标
+- 执行 `implementation-plan.md` Phase 4 第 36 条：实现可视化输出（资金曲线、回撤曲线、交易分布、持仓时间），并导出本地图片。
+
+### 已完成事项
+- 新增可视化模块 `src/analysis/visualization.py`：
+  - 新增 `PerformanceVisualizer`，统一导出 4 张图像文件（`equity_curve`、`drawdown_curve`、`trade_distribution`、`holding_time`）。
+  - 新增 `VisualizationArtifacts` 返回结构，统一返回导出文件路径。
+  - 新增 `VisualizationError`，对输入校验和导出失败提供清晰错误语义。
+- `equity_curve` 输入兼容回测与实时场景的通用结构：
+  - 支持 `Mapping[timestamp, equity]`；
+  - 支持 `Sequence[(timestamp, equity)]`。
+- `trade_log` 输入兼容 `dict` 与对象两类结构，支持多种字段来源：
+  - 盈亏分布：优先 `pnl_net`，回退 `pnl_gross`；
+  - 持仓时长：支持 `holding_seconds` / `holding_minutes` / `holding_hours`；
+  - 若未提供持仓时长字段，则通过 `entry_time/exit_time` 自动推导。
+- 图表后端采用 `matplotlib` 的 `Agg`，确保无头环境（CI/本地终端）可稳定导出图片。
+- 更新 `src/analysis/__init__.py` 导出入口，暴露 `PerformanceVisualizer`、`VisualizationArtifacts`、`VisualizationError`。
+- 新增测试 `tests/test_visualization.py`，覆盖：
+  - 4 张图像成功导出且文件非空；
+  - 空交易明细场景仍可生成分布图；
+  - 回撤序列计算正确性；
+  - 非法资金曲线输入报错；
+  - `datetime` 类型时间戳输入的回归场景（资金曲线与持仓时间推导）。
+- 更新 `tests/test_performance_analysis.py`：
+  - 新增 `datetime` 类型 `returns_series` 时间戳回归测试，确认收益分析路径在显式 `period_seconds` 下可稳定计算。
+
+### 测试结果
+- `PYTHONPATH=. ./.venv/bin/pytest -q tests/test_visualization.py tests/test_performance_analysis.py` → `12 passed`。
+- `PYTHONPATH=. ./.venv/bin/pytest -q` → `219 passed, 54 warnings`。
+
+### 验收状态
+- Phase 4 第 36 步代码已完成并通过验收，并在审查中**发现并修复了一个时间戳解析的隐式类型错误**。
+- `src/analysis/visualization.py` 和 `src/analysis/performance.py` 的 `_parse_timestamp` 均已补充对 Python 原生 `datetime` 对象的解析支持，解决在传入 `datetime` key 时触发崩溃的边界情况。
+- 已补齐两条正式 pytest 回归用例，覆盖可视化与性能分析两条路径的 `datetime` 输入。
+- 当前分支全量测试 219 passed。第 36 步验收完成。
+
+### 交接备注
+- 第 36 步仅新增可视化导出能力，不改变第 35 步性能指标计算口径。
+- 已修复 `_parse_timestamp` 的通用支持性问题，保证实际交易对象和曲线结构在分析导出环境下的健壮性。
+- 当前分支状态已经验证无误；以上为第 36 步收尾时记录（当前实际状态见文档顶部：已进入第 37 步，且第 38 步未开始）。
 
 ## 2026-02-21（第 35 步）
 
@@ -52,11 +136,11 @@
 ### 验收状态
 - Phase 3 第 35 步代码实现已完成，自动化测试通过。
 - 用户验收已通过（2026-02-21）。
-- 第 36 步尚未开始，等待你下达启动指令。
+- 第 36 步尚未开始（当时状态；当前状态见文档顶部）。
 
 ### 交接备注
 - 第 35 步核心约束已切换为“显式周期元数据驱动”：`returns_series` 路径必须提供 `period_seconds`。
-- 当前未启动第 36 步，保持阶段边界清晰。
+- 当前未启动第 36 步（当时状态；当前状态见文档顶部）。
 
 ## 2026-02-19（第 30 步）
 

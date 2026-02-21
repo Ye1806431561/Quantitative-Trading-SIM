@@ -1,9 +1,9 @@
-# 需求追踪清单（Phase 0-3 / Step 1-35）
+# 需求追踪清单（Phase 0-4 / Step 1-37）
 
 ## 说明
 - 来源文档：`memory-bank/product-requirement-document.md`
 - 目标：将需求逐项映射到模块与交付物，并标记范围（必选/可选）
-- 状态：已完成实施计划第 1-35 步代码与文档落地（第 34 步与第 35 步均已验证通过），第 36 步未开始
+- 状态：已完成实施计划第 1-37 步代码与文档落地（第 34-37 步已验证通过）；第 38 步未开始
 
 ## 最小可用范围（MVP）定义
 
@@ -27,8 +27,8 @@
 | FR-ACC-01 | 虚拟账户初始化（初始资金） | `src/core/account.py` | 账户初始化服务与 CLI 初始化命令 | 必选 | - |
 | FR-ACC-02 | 多币种余额管理 | `src/core/account.py` | 余额模型与更新接口 | 必选 | - |
 | FR-ACC-03 | 账户资产实时计算 | `src/core/account.py`, `src/live/price_service.py` | 估值服务 | 必选 | - |
-| FR-ACC-04 | 查看当前持仓 | `src/core/position.py`, `src/cli.py` | 持仓查询接口与 CLI 展示 | 必选 | - |
-| FR-ACC-05 | 查看可用余额/冻结资金/总资产估值 | `src/core/account.py`, `src/cli.py` | 账户查询命令 | 必选 | - |
+| FR-ACC-04 | 查看当前持仓 | `src/core/position.py`, `src/cli.py`, `src/cli_commands.py` | 持仓查询接口与 CLI 展示 | 必选 | - |
+| FR-ACC-05 | 查看可用余额/冻结资金/总资产估值 | `src/core/account.py`, `src/cli.py`, `src/cli_commands.py` | 账户查询命令 | 必选 | - |
 | FR-MKT-01 | 通过 CCXT 获取实时行情 | `src/data/market.py` | 市场数据客户端 | 必选 | - |
 | FR-MKT-02 | 支持多个主流交易所 | `src/data/market.py`, `config/config.yaml` | 交易所适配与配置项 | 必选 | - |
 | FR-MKT-03 | 实时价格/深度/K 线获取 | `src/data/market.py`, `src/data/realtime_market.py` | 行情查询接口 | 必选 | - |
@@ -39,7 +39,7 @@
 | FR-ORD-02 | 订单类型：限价单 | `src/core/order.py`, `src/core/matching.py` | 限价挂单与触发撮合 | 必选 | - |
 | FR-ORD-03 | 订单类型：止损单 | `src/core/order.py`, `src/core/stop_trigger.py` | 止损触发规则 | 必选 | - |
 | FR-ORD-04 | 订单类型：止盈单 | `src/core/order.py`, `src/core/stop_trigger.py` | 止盈触发规则 | 必选 | - |
-| FR-ORD-05 | 下单/撤单/状态查询/历史记录 | `src/core/order.py`, `src/cli.py` | 订单服务与 CLI 命令 | 必选 | - |
+| FR-ORD-05 | 下单/撤单/状态查询/历史记录 | `src/core/order.py`, `src/cli.py`, `src/cli_order_commands.py` | 订单服务与 CLI 命令 | 必选 | - |
 | FR-MCH-01 | 模拟撮合（基于实时价格） | `src/core/matching.py` | 撮合引擎 | 必选 | - |
 | FR-MCH-02 | 限价单队列管理 | `src/core/matching.py` | 队列与撮合状态机 | 必选 | - |
 | FR-MCH-03 | 滑点模拟可配置 | `src/core/execution_cost.py`, `src/core/matching.py`, `src/core/limit_matching.py`, `src/core/stop_trigger.py`, `config/config.yaml` | 滑点参数与计算器 | 必选 | - |
@@ -66,8 +66,8 @@
 | FR-ANL-02 | 收益指标（总收益/年化/最大回撤/夏普/索提诺） | `src/analysis/performance.py` | 收益与风险指标模块（支持显式周期年化） | 必选 | - |
 | FR-ANL-03 | 可视化报表（资金曲线/回撤/分布/持仓时间） | `src/analysis/visualization.py` | 图表输出模块 | 必选 | - |
 | FR-LOG-01 | 交易/策略/错误日志分级记录 | `src/utils/logger.py` | 日志初始化与分流（终端+文件+轮转+脱敏） | 必选 | - |
-| FR-LOG-02 | 实时监控（策略状态/资产变化/异常告警） | `src/live/monitor.py`, `src/cli.py` | 监控输出与查询接口 | 必选 | - |
-| FR-CLI-01 | CLI 命令入口与常用命令 | `src/cli.py`, `main.py` | CLI 子命令集合 | 必选 | - |
+| FR-LOG-02 | 实时监控（策略状态/资产变化/异常告警） | `src/live/monitor.py`, `src/cli.py`, `src/cli_commands.py` | 监控输出与查询接口 | 必选 | - |
+| FR-CLI-01 | CLI 命令入口与常用命令 | `src/cli.py`, `src/cli_context.py`, `src/cli_commands.py`, `src/cli_order_commands.py`, `src/cli_workflows.py`, `main.py` | CLI 子命令集合 | 必选 | - |
 | FR-WEB-01 | Web 界面（可选） | `web/`（预留） | Web 服务与仪表盘 | 可选 | Phase 0-4 当前交付不含 Web，优先保证 CLI 与双引擎闭环 |
 | NFR-PERF-01 | 实时行情延迟 < 1 秒 | `src/data/market.py`, `src/live/simulator.py` | 性能基准脚本与报告 | 必选 | - |
 | NFR-PERF-02 | 订单处理响应 < 100ms | `src/core/matching.py` | 性能压测脚本与结果 | 必选 | - |
@@ -88,7 +88,7 @@
 | TC-STACK-02 | 核心依赖遵循技术栈文档 | `requirements.txt` | 锁定版本清单 | 必选 | - |
 | TC-DATA-01 | 数据模型：accounts/orders/trades/strategy_runs | `src/core/database.py` | 数据库初始化脚本 | 必选 | - |
 | TC-DATA-02 | 数据模型：positions/candles（含约束与索引） | `src/core/database.py` | 表结构与迁移脚本 | 必选 | - |
-| TC-OPS-01 | 可观测性：日志与状态查询 | `src/utils/logger.py`, `src/cli.py` | 状态命令与日志策略 | 必选 | - |
+| TC-OPS-01 | 可观测性：日志与状态查询 | `src/utils/logger.py`, `src/cli.py`, `src/cli_commands.py` | 状态命令与日志策略 | 必选 | - |
 
 ## 新增约束项：数据路径约束（强制）
 
@@ -454,4 +454,42 @@
 - [x] 本地自检通过：
   - `PYTHONPATH=. ./.venv/bin/pytest -q tests/test_performance_analysis.py`（6 passed）
   - `PYTHONPATH=. ./.venv/bin/pytest -q`（213 passed, 54 warnings）
+- [x] 用户验证通过（2026-02-21）。
+
+## 第36步验收检查（已通过）
+
+- [x] 已实现可视化导出模块 `src/analysis/visualization.py`，支持导出资金曲线、回撤曲线、交易盈亏分布、持仓时间分布四类图像。
+- [x] 已实现统一导出入口 `PerformanceVisualizer.export_all()`，一次调用返回 4 个产物路径（`VisualizationArtifacts`）。
+- [x] 已兼容回测与实时输入结构：
+  - 资金曲线支持 `Mapping[timestamp, equity]` 与 `Sequence[(timestamp, equity)]`；
+  - 交易明细支持 `dict` 与对象结构。
+- [x] 已实现交易与持仓分布的多字段回退提取：`pnl_net/pnl_gross`、`holding_seconds/minutes/hours`、`entry_time/exit_time` 推导。
+- [x] 已固定 `matplotlib` `Agg` 后端，保证无头环境可导出图片。
+- [x] 已新增异常类型 `VisualizationError`，覆盖输入校验与文件导出失败语义。
+- [x] 已更新导出入口 `src/analysis/__init__.py`，公开 `PerformanceVisualizer`、`VisualizationArtifacts`、`VisualizationError`。
+- [x] 已新增自动化测试 `tests/test_visualization.py`，覆盖导出成功、空交易场景、回撤计算与输入校验报错。
+- [x] 已补充 `datetime` 时间戳兼容修复：
+  - `src/analysis/visualization.py` 与 `src/analysis/performance.py` 的 `_parse_timestamp` 均支持 Python 原生 `datetime`；
+  - naive 时间按 `UTC` 解释，避免时区未指定导致的运行时异常。
+- [x] 已补充两条正式 pytest 回归用例：
+  - `tests/test_visualization.py::test_export_all_accepts_datetime_timestamps`
+  - `tests/test_performance_analysis.py::test_returns_series_accepts_datetime_timestamps`
+- [x] 本地自检通过：
+  - `PYTHONPATH=. ./.venv/bin/pytest -q tests/test_visualization.py tests/test_performance_analysis.py`（12 passed）
+  - `PYTHONPATH=. ./.venv/bin/pytest -q`（219 passed, 54 warnings）
+- [x] 用户验证通过（2026-02-21）。
+
+## 第37步验收检查（已通过）
+
+- [x] 已实现 CLI 命令集合并拆分处理器：`src/cli.py`、`src/cli_context.py`、`src/cli_commands.py`、`src/cli_order_commands.py`、`src/cli_workflows.py`。
+- [x] 已覆盖实施计划要求命令：`start/startup`、`stop`、`status --disk`、`balance`、`positions`、`order place/list/cancel`、`backtest`、`download`、`live`、`import`、`export`、`cleanup`、`reconcile`。
+- [x] 已完成参数校验与帮助信息：缺少必填参数时由 `argparse` 返回可解释错误（退出码 2），命令级条件参数执行显式报错。
+- [x] 已实现运行状态文件：`runtime_state.json` 存储在 `system.data_dir`，由 `start/stop/status` 共享。
+- [x] 已补充显式回归断言：`backtest --output-dir` 同时导出 6 个报告文件与 4 张图表文件。
+- [x] 已新增自动化测试：
+  - `tests/test_cli_runtime.py`
+  - `tests/test_cli_workflows.py`
+- [x] 本地自检通过：
+  - `PYTHONPATH=. ./.venv/bin/pytest -q tests/test_cli_runtime.py tests/test_cli_workflows.py`（18 passed）
+  - `PYTHONPATH=. ./.venv/bin/pytest -q`（237 passed, 54 warnings）
 - [x] 用户验证通过（2026-02-21）。

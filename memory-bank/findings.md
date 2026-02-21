@@ -20,7 +20,11 @@
 <!-- Captured from user request -->
 
 - 第 35 步已完成并通过用户验收，需要同步 `memory-bank/` 文档状态。
-- 第 36 步尚未开始，等待用户启动指令。
+- 第 36 步已完成代码实现并通过用户验收（可视化输出模块）。
+- 补齐两条正式 pytest 回归用例，覆盖 `datetime` 时间戳输入在性能分析与可视化路径下的兼容性。
+- 第 37 步已完成并通过用户验收（CLI 命令集合）。
+- 第 37 步已补充显式断言：`backtest --output-dir` 同时导出报告与 4 张图表。
+- 第 38 步尚未启动。
 
 ## Research Findings
 <!-- 
@@ -130,6 +134,24 @@
   - 用“全局平均间隔”回推 `T0` 在非等间隔收益序列下不可靠；单点收益序列“默认回退 1 天”也缺乏业务依据。
   - 采用显式周期元数据策略后，需强制要求调用方提供 `period_seconds`，并校验相邻时间戳间隔一致性，不一致应直接报错而不是隐式修正。
   - 第 35 步落地后，`tests/test_performance_analysis.py` 模块测试通过（`6 passed`），全量回归通过（`213 passed, 54 warnings`）。
+- **Step 36 实现发现（2026-02-21）**：
+  - 可视化模块需要同时服务回测与实时，因此输入协议必须兼容 `Mapping` 与 `(timestamp, equity)` 序列两种资金曲线格式。
+  - `trade_log` 在不同链路字段并不完全一致，需支持 `pnl_net/pnl_gross`、`holding_seconds/minutes/hours` 以及 `entry_time/exit_time` 推导，避免调用方额外做字段适配。
+  - 空交易场景下仍需生成图像文件（而非报错），以保证批量任务和自动化流程可以稳定产出完整报表集合。
+  - 图像导出在 CI/终端环境需固定无头后端（`matplotlib` `Agg`），否则存在 GUI 后端依赖导致失败的风险。
+  - 第 36 步落地后，`tests/test_visualization.py + tests/test_performance_analysis.py` 通过（`10 passed`），全量回归通过（`217 passed, 54 warnings`）。
+- **Step 36 验收补充（2026-02-21）**：
+  - 审查发现 `_parse_timestamp` 对 `datetime` 输入支持缺失，会在资金曲线 key 或交易明细 `entry_time/exit_time` 为原生 `datetime` 时触发异常。
+  - 修复方式：在 `src/analysis/performance.py` 与 `src/analysis/visualization.py` 同步增加 `datetime` 分支，naive 时间统一按 `UTC` 解释。
+  - 回归方式：新增正式 pytest 用例（而非仅脚本验证），分别覆盖性能分析路径与可视化路径的 `datetime` 输入。
+  - 修复后验证：`tests/test_visualization.py + tests/test_performance_analysis.py` 为 `12 passed`；全量 `219 passed, 54 warnings`。
+- **Step 37 实现发现（2026-02-21）**：
+  - CLI 命令集合采用 `argparse` 子命令模型可直接复用缺参错误码（2），满足“缺参有可解释返回”的验收口径。
+  - 为满足单文件约束与可维护性，命令处理需拆分为系统命令、订单命令、工作流命令三个模块，主入口仅做参数解析与路由。
+  - `start/stop/status` 共享 `runtime_state.json` 状态文件（位于 `system.data_dir`），可避免仅依赖进程内状态导致的重启丢失。
+  - 条件参数（如限价单必须 `--price`）不能只依赖 argparse 静态定义，需在命令处理器中增加显式业务校验。
+  - 新增显式回归断言：`backtest --output-dir` 必须导出 6 个报告文件与 4 张 PNG 图表文件。
+  - 第 37 步验收版测试结果：`tests/test_cli_runtime.py + tests/test_cli_workflows.py` 为 `18 passed`，全量回归 `237 passed, 54 warnings`。
 
 ## Technical Decisions
 <!-- 
@@ -223,6 +245,13 @@
 | `returns_series` 路径强制显式传入 `period_seconds` | 避免通过隐式推断周期导致年化收益、Sharpe/Sortino 在不规则时间序列上产生口径偏差 |
 | 资金曲线回推使用 `t0 = first_timestamp - period_seconds` + 初始本金补点 | 统一回测与实时收益序列重建口径，修复首个时间段丢失导致的统计误差 |
 | 性能分析模块拆分为 `performance.py`/`performance_trade.py`/`performance_errors.py` | 满足单文件 <300 行约束，分离编排逻辑、交易统计与异常定义职责 |
+| 可视化导出统一封装为 `PerformanceVisualizer` | 将四类图表导出收敛到单入口，降低回测与实时接入复杂度 |
+| 可视化模块固定使用 `matplotlib` 的 `Agg` 后端 | 保证无头环境稳定导出图片，避免运行时 GUI 依赖 |
+| 交易与持仓分布采用“多字段回退提取” | 兼容不同来源的交易明细结构，减少调用方适配成本 |
+| 时间戳解析统一支持 `datetime`/数值/ISO 字符串三类输入 | 覆盖 pandas 与实盘常见时间字段类型，避免运行时类型错误 |
+| CLI 采用 `argparse` 子命令 + 多处理器拆分 | 既满足缺参返回码与帮助信息要求，也满足单文件 <300 行约束 |
+| 运行状态持久化到 `runtime_state.json` | `start/stop/status` 可跨进程共享状态，避免仅内存态导致重启后状态丢失 |
+| 为 `backtest --output-dir` 增加文件级显式断言 | 防止未来回归只导出报告不导出图表，保证 CLI 导出链路完整 |
 
 ## Issues Encountered
 <!-- 
@@ -260,6 +289,8 @@
 | 非等间隔 `returns_series` 使用平均间隔回推 `T0` 会扭曲年化/Sharpe | 取消平均间隔推断，改为强制显式 `period_seconds`，并在分析前校验每个相邻时间间隔一致 |
 | 单点 `returns_series` 使用“回退 1 天”缺少业务依据 | 删除 1 天硬编码默认值；缺少 `period_seconds` 直接抛错，由调用方提供明确周期 |
 | 旧测试仅断言 `total_return`，未覆盖年化/Sharpe 口径 | 扩展 `tests/test_performance_analysis.py`，增加 `annualized_return` 与 `sharpe_ratio` 回归断言 |
+| 可视化导出在空交易数据场景易退化为无输出 | 在无交易场景渲染占位文本并照常导出图片，确保产物完整 |
+| `datetime` 时间戳输入在分析/可视化路径会报类型错误 | 双模块 `_parse_timestamp` 增加 `datetime` 支持，并补充两条正式 pytest 回归用例 |
 
 ## Resources
 <!-- 
@@ -282,7 +313,16 @@
 - `src/analysis/performance.py`
 - `src/analysis/performance_trade.py`
 - `src/analysis/performance_errors.py`
+- `src/analysis/visualization.py`
+- `src/cli.py`
+- `src/cli_context.py`
+- `src/cli_commands.py`
+- `src/cli_order_commands.py`
+- `src/cli_workflows.py`
 - `tests/test_performance_analysis.py`
+- `tests/test_visualization.py`
+- `tests/test_cli_runtime.py`
+- `tests/test_cli_workflows.py`
 - `config/config.yaml`
 - `src/utils/config_defaults.py`
 - `src/utils/config_validation.py`

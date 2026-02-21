@@ -126,6 +126,10 @@ def _normalize_series(
 def _parse_timestamp(value: object) -> float:
     if isinstance(value, bool):
         raise PerformanceAnalysisError("timestamp must be int, float, or ISO string")
+    if isinstance(value, datetime):
+        if value.tzinfo is None:
+            value = value.replace(tzinfo=timezone.utc)
+        return value.timestamp()
     if isinstance(value, (int, float)):
         numeric = float(value)
         if numeric <= 0:

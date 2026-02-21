@@ -2,9 +2,9 @@
 
 ## 当前阶段定位（2026-02-21）
 
-- 仓库已完成 `implementation-plan.md` Phase 0 第 1-7 条，Phase 1 第 8-16 条，Phase 2 第 17-24 条与 Phase 3 第 25-35 条代码落地（第 35 步已通过用户验收）。
-- 当前处于“第 35 步已验收通过、等待第 36 步启动”阶段：性能分析模块已支持回测与实时统一口径。
-- 第 36 步尚未开始（等待用户启动指令）。
+- 仓库已完成 `implementation-plan.md` Phase 0 第 1-7 条，Phase 1 第 8-16 条，Phase 2 第 17-24 条，Phase 3 第 25-35 条，Phase 4 第 36-37 条代码落地（第 35-37 步均已通过用户验收）。
+- 当前处于“第 37 步已验收通过、第 38 步未开始”阶段。
+- 第 38 步尚未启动。
 - 最小交付范围仍锁定为 CLI + 模拟盘（回测与实时模拟），Web 能力保留为可选项且暂不交付。
 - **第 29 步实现与验证**：`src/live/realtime_loop.py` 实现完整的实时模拟主循环（行情拉取→策略执行→下单→撮合→持仓更新），全量测试 8 passed。实时模式的数据读取路径符合约束：先将最新行情落 SQLite，策略可从 SQLite 读取历史数据；CSV/Parquet 不参与运行态读写。
 
@@ -85,7 +85,16 @@
 - `src/analysis/performance.py`：第 35 步通用性能分析编排入口，统一支持 `equity_curve` 直接分析与 `returns_series + period_seconds` 反推分析。
 - `src/analysis/performance_trade.py`：第 35 步交易统计构建模块，负责从成交明细计算次数、胜率、盈亏比等交易维度指标。
 - `src/analysis/performance_errors.py`：第 35 步性能分析异常定义模块，统一参数错误与输入校验错误语义。
+- `src/analysis/visualization.py`：第 36 步可视化导出模块，提供资金曲线、回撤曲线、交易盈亏分布、持仓时间分布四类图像导出能力。
+- `src/cli.py`：第 37 步 CLI 主入口与参数解析器，实现子命令路由与统一错误返回码。
+- `src/cli_context.py`：第 37 步 CLI 运行上下文装配，负责配置加载、数据库/服务构建与运行状态文件读写。
+- `src/cli_commands.py`：第 37 步系统类命令处理器（`start/stop/status/balance/positions/cleanup/reconcile`）。
+- `src/cli_order_commands.py`：第 37 步订单类命令处理器（`order place/list/cancel`）。
+- `src/cli_workflows.py`：第 37 步工作流命令处理器（`backtest/download/live/import/export`）。
 - `tests/test_performance_analysis.py`：第 35 步性能分析测试，覆盖收益/风险指标、周期参数校验、间隔一致性校验。
+- `tests/test_visualization.py`：第 36 步可视化测试，覆盖图片导出、空交易场景、回撤计算与输入校验异常。
+- `tests/test_cli_runtime.py`：第 37 步 CLI 运行态测试，覆盖系统状态、订单命令、reconcile 与参数缺失错误返回。
+- `tests/test_cli_workflows.py`：第 37 步 CLI 工作流测试，覆盖回测/下载/实时模拟/导入导出/清理及缺参错误返回。
 - `src/live/loop_models.py`：实时循环数据模型定义。
 - `src/live/loop_signal_executor.py`：信号执行与通知处理处理器。
 - `src/live/price_service.py`：价格估值与资产汇总服务。
@@ -131,7 +140,7 @@
 - `tests/*.py`（其余）：测试模块占位，用于承接 Phase 4 第 39 条。
 - `requirements.txt`：当前仓库依赖清单入口（安装/CI 统一来源）；后续若恢复严格锁定版本，应与 Phase 0 第 4 条验收口径保持一致。
 - `README.md`：补充第 7 步日志方案说明与手工演练步骤，作为日志策略落地说明文档。
-- `main.py`：程序入口占位，用于承接 CLI 与运行编排接入。
+- `main.py`：程序入口，调用 `src/cli.py` 执行命令分发。
 
 ## 本轮新增架构洞察
 - 基础运行层已形成“配置闭环 + 日志闭环”：
@@ -152,6 +161,11 @@
 - 第 34 步新增策略参数管理：`StrategyRegistry` + `StrategyParamResolver` 统一参数合并入口，显式参数覆盖配置；实时循环将合并参数注入 `StrategyContext.parameters`。
 - 第 7 步日志方案已直接消费 `load_config()` 产出的 `logging` 配置，避免重复解析配置逻辑。
 - 第 35 步新增“显式周期元数据”架构约束：当输入为 `returns_series` 时，必须显式传入 `period_seconds`，并强校验时间戳间隔一致性，防止年化收益与 Sharpe/Sortino 在非等间隔数据下发生系统性偏差。
+- 第 36 步新增可视化输出能力：通过统一输入协议将回测与实时资金曲线/成交明细收敛到同一导出模块，并采用 `matplotlib` `Agg` 后端保证无头环境下可稳定生成图片文件。
+- 第 36 步验收补充：`performance.py` 与 `visualization.py` 的 `_parse_timestamp` 已统一支持 Python `datetime` 输入，并新增正式 pytest 回归用例覆盖该边界。
+- 第 37 步新增 CLI 编排层：采用 `argparse` 子命令模型与多文件处理器拆分（系统命令/订单命令/工作流命令），在保持单文件约束的同时实现命令全集覆盖。
+- 第 37 步运行态状态管理采用 `runtime_state.json`（位于 `system.data_dir`），`start/stop/status` 命令共享同一状态源，`status --disk` 提供数据库文件与磁盘容量可观测信息。
+- 第 37 步补充显式回归断言：`backtest --output-dir` 必须导出 6 个报告文件与 4 张可视化图表文件，防止导出链路回退。
 - 第 9 步已完成并通过验证；下一步（第 10 步）应仅推进领域模型与校验规则定义，不提前进入账户/订单流程实现。
 - 第 11 步已完成并通过验证：
   - `src/core/account_service.py` 实现账户生命周期管理（初始化、查询、余额变更、持仓恢复、总资产估值）。
@@ -297,7 +311,7 @@
 - `tests/*.py`（其余）：测试模块占位，用于承接 Phase 4 第 39 条。
 - `requirements.txt`：当前仓库依赖清单入口（安装/CI 统一来源）；后续若恢复严格锁定版本，应与 Phase 0 第 4 条验收口径保持一致。
 - `README.md`：补充第 7 步日志方案说明与手工演练步骤，作为日志策略落地说明文档。
-- `main.py`：程序入口占位，用于承接 CLI 与运行编排接入。
+- `main.py`：程序入口，调用 `src/cli.py` 执行命令分发。
 
 ## 本轮新增架构洞察
 - 基础运行层已形成“配置闭环 + 日志闭环”：

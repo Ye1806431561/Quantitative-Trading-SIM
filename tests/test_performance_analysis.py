@@ -1,5 +1,7 @@
 """Performance analysis module tests (Phase 4 Step 35)."""
 
+from datetime import datetime, timezone
+
 import pytest
 
 from src.analysis.performance import PerformanceAnalysisError, analyze_performance
@@ -115,3 +117,20 @@ def test_trade_log_metrics() -> None:
     assert summary.losing_trades == 1
     assert summary.win_rate == pytest.approx(2 / 3)
     assert summary.profit_factor == pytest.approx(30.0 / 5.0)
+
+
+def test_returns_series_accepts_datetime_timestamps() -> None:
+    returns = {
+        datetime(2026, 2, 20, tzinfo=timezone.utc): 0.01,
+        datetime(2026, 2, 21): -0.005,
+        datetime(2026, 2, 22, tzinfo=timezone.utc): 0.02,
+    }
+
+    summary = analyze_performance(
+        returns_series=returns,
+        initial_capital=1000.0,
+        period_seconds=86400.0,
+        trade_log=[],
+    )
+
+    assert summary.total_return == pytest.approx(0.025049, rel=1e-6)
