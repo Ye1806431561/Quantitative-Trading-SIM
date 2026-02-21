@@ -17,3 +17,33 @@ def test_equity_curve_basic_metrics() -> None:
 
     assert summary.total_return == pytest.approx(0.2)
     assert summary.max_drawdown == pytest.approx((1100.0 - 1050.0) / 1100.0)
+
+
+def test_returns_series_reconstructs_equity() -> None:
+    returns = {
+        "2026-02-20T00:00:00": 0.01,
+        "2026-02-21T00:00:00": -0.005,
+        "2026-02-22T00:00:00": 0.02,
+    }
+
+    summary = analyze_performance(
+        returns_series=returns,
+        initial_capital=1000.0,
+        trade_log=[],
+    )
+
+    assert summary.total_return == pytest.approx(0.025049, rel=1e-6)
+
+
+
+def test_sharpe_and_sortino_none_when_zero_variance() -> None:
+    equity = {
+        "2026-02-20T00:00:00": 1000.0,
+        "2026-02-21T00:00:00": 1010.0,
+        "2026-02-22T00:00:00": 1020.1,
+    }
+
+    summary = analyze_performance(equity_curve=equity, trade_log=[])
+
+    assert summary.sharpe_ratio is None
+    assert summary.sortino_ratio is None
