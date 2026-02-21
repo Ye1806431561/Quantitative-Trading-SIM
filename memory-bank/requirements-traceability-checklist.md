@@ -1,9 +1,9 @@
-# 需求追踪清单（Phase 0-3 / Step 1-34）
+# 需求追踪清单（Phase 0-3 / Step 1-35）
 
 ## 说明
 - 来源文档：`memory-bank/product-requirement-document.md`
 - 目标：将需求逐项映射到模块与交付物，并标记范围（必选/可选）
-- 状态：已完成实施计划第 1-34 步代码与文档落地（第 34 步已验证通过），第 35 步未开始
+- 状态：已完成实施计划第 1-35 步代码与文档落地（第 34 步与第 35 步均已验证通过），第 36 步未开始
 
 ## 最小可用范围（MVP）定义
 
@@ -62,8 +62,8 @@
 | FR-BKT-03 | 回测配置映射（资金/费率/滑点/订单类型） | `config/config.yaml`, `src/backtest/engine.py` | 参数映射层 | 必选 | - |
 | FR-BKT-04 | 标准分析器（Sharpe/Drawdown/Trade/Returns/TimeReturn） | `src/backtest/analyzers.py` | 分析器注册与输出 | 必选 | - |
 | FR-BKT-05 | 回测报告与导出（CSV/JSON） | `src/backtest/exporter.py` | 报告生成器 | 必选 | - |
-| FR-ANL-01 | 交易统计（次数/胜率/盈亏比） | `src/backtest/analyzers.py`, `src/analysis/metrics.py` | 统计指标模块 | 必选 | - |
-| FR-ANL-02 | 收益指标（总收益/年化/最大回撤/夏普/索提诺） | `src/analysis/metrics.py` | 收益指标模块 | 必选 | - |
+| FR-ANL-01 | 交易统计（次数/胜率/盈亏比） | `src/analysis/performance.py`, `src/analysis/performance_trade.py` | 通用性能分析入口与交易统计模块 | 必选 | - |
+| FR-ANL-02 | 收益指标（总收益/年化/最大回撤/夏普/索提诺） | `src/analysis/performance.py` | 收益与风险指标模块（支持显式周期年化） | 必选 | - |
 | FR-ANL-03 | 可视化报表（资金曲线/回撤/分布/持仓时间） | `src/analysis/visualization.py` | 图表输出模块 | 必选 | - |
 | FR-LOG-01 | 交易/策略/错误日志分级记录 | `src/utils/logger.py` | 日志初始化与分流（终端+文件+轮转+脱敏） | 必选 | - |
 | FR-LOG-02 | 实时监控（策略状态/资产变化/异常告警） | `src/live/monitor.py`, `src/cli.py` | 监控输出与查询接口 | 必选 | - |
@@ -436,3 +436,22 @@
 - [x] 已新增自动化测试 `tests/test_strategy_adapter.py`（13项测试），充分测试了预热流、历史数据隔离以及与 Backtrader 产生的信号一致性。
 - [x] 代码和测试已通过全量回归（183 passed, 0 failed）。
 - [x] 用户验收已通过（包含各项 P0-P2 修复验证）。
+
+## 第35步验收检查（已通过）
+
+- [x] 已实现通用性能分析模块 `src/analysis/performance.py`，支持基于 `equity_curve` 或 `returns_series` 的统一分析入口。
+- [x] 已按策略要求引入显式周期参数：`returns_series` 路径强制要求 `period_seconds`，缺失时拒绝执行。
+- [x] 已修复资金曲线重建口径：删除“平均间隔回推 T0”与“单点回退 1 天”逻辑，改为 `t0 = first_timestamp - period_seconds` 并补齐初始本金基准点。
+- [x] 已新增时间间隔一致性校验：`returns_series` 相邻时间戳间隔与 `period_seconds` 不一致时直接报错，避免年化与 Sharpe 失真。
+- [x] 已按单文件约束拆分模块：
+  - `src/analysis/performance_trade.py`（交易统计）
+  - `src/analysis/performance_errors.py`（异常定义）
+  - `src/analysis/performance.py`（分析编排，当前 297 行）
+- [x] 已更新自动化测试 `tests/test_performance_analysis.py`，覆盖：
+  - `annualized_return` 与 `sharpe_ratio` 在 `returns_series` 重建路径下的断言；
+  - 缺失 `period_seconds` 报错；
+  - 时间间隔与 `period_seconds` 不匹配报错。
+- [x] 本地自检通过：
+  - `PYTHONPATH=. ./.venv/bin/pytest -q tests/test_performance_analysis.py`（6 passed）
+  - `PYTHONPATH=. ./.venv/bin/pytest -q`（213 passed, 54 warnings）
+- [x] 用户验证通过（2026-02-21）。

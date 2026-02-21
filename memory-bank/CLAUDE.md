@@ -8,6 +8,11 @@
 - 📖 完整阅读 `memory-bank/product-requirement-document`
 - 📝 每完成一个重大功能或里程碑后，必须更新 `memory-bank/architecture.md`
 
+At the start of any task-oriented session — any interaction where you will
+use tools and produce deliverables — invoke the task-observer skill before
+beginning work. This ensures skill improvement opportunities are captured
+throughout the session.
+
 ---
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.

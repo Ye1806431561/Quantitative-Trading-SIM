@@ -3,11 +3,11 @@
 此文档仅保留最新进度摘要及当前目标。历史记录已按天归档至 `memory-bank/progress_archive/` 目录中。
 
 ## 当前目标
-- 第 34 步已验证通过。
-- 第 35 步尚未开始（等待启动）。
+- 第 35 步已验收通过。
+- 第 36 步尚未开始，等待你下达启动指令。
 
 ## 未解决问题清单
-- 第 35 步尚未开始：性能分析模块待实现。
+- 第 36 步尚未开始（待启动）。
 
 ## 历史归档
 - [2026-02-15](progress_archive/2026-02-15.md)
@@ -18,6 +18,45 @@
 - [2026-02-20](progress_archive/2026-02-20.md)
 
 ## 最近的关键变更
+
+## 2026-02-21（第 35 步）
+
+### 本次目标
+- 执行 `implementation-plan.md` Phase 3 第 35 条：实现“基于资金曲线与交易明细的通用性能分析工具”，同时支持回测与实时场景。
+
+### 已完成事项
+- 新增通用性能分析入口 `src/analysis/performance.py`，统一支持两种输入模式：
+  - 直接传入 `equity_curve`；
+  - 传入 `returns_series` 并显式指定 `period_seconds` 后反推资金曲线。
+- 修复 `returns_series` 反推路径的关键口径问题：
+  - 移除“全局平均间隔回推 T0”逻辑；
+  - 移除“单点收益默认回退 1 天”逻辑；
+  - 改为 `t0 = first_timestamp - period_seconds`，并用 `initial_capital` 补齐首个基准点。
+- 新增周期一致性校验：`returns_series` 的相邻时间戳间隔必须与 `period_seconds` 一致，不一致直接抛出参数错误，避免年化与 Sharpe 口径失真。
+- 年化相关计算统一使用显式周期参数：
+  - 年化时长基于 `period_seconds * (len(series) - 1)`；
+  - 年化因子基于 `year_seconds / period_seconds`。
+- 按 CLAUDE 的单文件约束完成模块拆分：
+  - `src/analysis/performance_trade.py`：交易统计构建；
+  - `src/analysis/performance_errors.py`：性能分析异常定义；
+  - `src/analysis/performance.py`：分析编排与核心计算（当前 297 行）。
+- 补充/更新自动化测试 `tests/test_performance_analysis.py`：
+  - 覆盖 `returns_series` 反推路径的 `annualized_return` 与 `sharpe_ratio`；
+  - 覆盖缺失 `period_seconds` 的报错；
+  - 覆盖时间戳间隔与 `period_seconds` 不一致的报错。
+
+### 测试结果
+- `PYTHONPATH=. ./.venv/bin/pytest -q tests/test_performance_analysis.py` → `6 passed`。
+- `PYTHONPATH=. ./.venv/bin/pytest -q` → `213 passed, 54 warnings`。
+
+### 验收状态
+- Phase 3 第 35 步代码实现已完成，自动化测试通过。
+- 用户验收已通过（2026-02-21）。
+- 第 36 步尚未开始，等待你下达启动指令。
+
+### 交接备注
+- 第 35 步核心约束已切换为“显式周期元数据驱动”：`returns_series` 路径必须提供 `period_seconds`。
+- 当前未启动第 36 步，保持阶段边界清晰。
 
 ## 2026-02-19（第 30 步）
 
@@ -195,4 +234,4 @@
 ### 验收状态
 - Phase 3 第 34 步代码实现已完成，自动化测试通过。
 - 用户已验证通过（2026-02-20）。
-- 第 35 步尚未开始。
+- 第 35 步当时尚未开始（历史记录；当前状态见文档顶部）。

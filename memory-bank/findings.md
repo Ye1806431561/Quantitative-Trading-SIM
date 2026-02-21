@@ -19,8 +19,8 @@
 -->
 <!-- Captured from user request -->
 
-- 第 34 步已完成并通过用户验证，需要同步 `memory-bank/` 文档状态。
-- 在用户明确指示前，不启动第 35 步开发。
+- 第 35 步已完成并通过用户验收，需要同步 `memory-bank/` 文档状态。
+- 第 36 步尚未开始，等待用户启动指令。
 
 ## Research Findings
 <!-- 
@@ -125,6 +125,11 @@
   - 导出器应自动创建输出目录（如不存在），避免用户手动创建目录的额外步骤。
   - 必须正确处理 `None` 值（如 `sharpe_ratio=None`、`profit_factor=None`），JSON 序列化为 `null`，CSV 序列化为空字符串或 `None` 字符串。
   - CSV/JSON 导出符合数据路径约束（`DC-001~DC-004`）：仅用于 export/backup，不参与运行态读写。
+- **Step 35 实现发现（2026-02-21）**：
+  - `returns_series` 反推资金曲线时，若缺失首个基准时间点 `T0` 与 `initial_capital`，会导致年化收益与 Sharpe 等风险指标出现系统性偏差。
+  - 用“全局平均间隔”回推 `T0` 在非等间隔收益序列下不可靠；单点收益序列“默认回退 1 天”也缺乏业务依据。
+  - 采用显式周期元数据策略后，需强制要求调用方提供 `period_seconds`，并校验相邻时间戳间隔一致性，不一致应直接报错而不是隐式修正。
+  - 第 35 步落地后，`tests/test_performance_analysis.py` 模块测试通过（`6 passed`），全量回归通过（`213 passed, 54 warnings`）。
 
 ## Technical Decisions
 <!-- 
@@ -215,6 +220,9 @@
 | 布林带参数键统一为 `dev` | 与策略参数名一致，避免配置加载时 `std_dev` 被忽略 |
 | 布林带信号采用“先越轨再回升/回落确认 + 中轨止盈” | 减少单根穿越误触发，满足策略描述并保持只做多逻辑 |
 | 进度历史拆分到 `progress_archive/` 并纳入版本控制 | 保持 `progress.md` 简洁，同时防止历史记录丢失 |
+| `returns_series` 路径强制显式传入 `period_seconds` | 避免通过隐式推断周期导致年化收益、Sharpe/Sortino 在不规则时间序列上产生口径偏差 |
+| 资金曲线回推使用 `t0 = first_timestamp - period_seconds` + 初始本金补点 | 统一回测与实时收益序列重建口径，修复首个时间段丢失导致的统计误差 |
+| 性能分析模块拆分为 `performance.py`/`performance_trade.py`/`performance_errors.py` | 满足单文件 <300 行约束，分离编排逻辑、交易统计与异常定义职责 |
 
 ## Issues Encountered
 <!-- 
@@ -249,6 +257,9 @@
 | Backtrader 分析器结果结构不统一 | 新增转换层（`_build_trade_stats`/`_build_risk_metrics`/`_build_returns_analysis`/`_build_time_series`），统一转换为应用层数据类 |
 | 无交易场景 `TradeAnalyzer` 返回空字典 | 在 `_build_trade_stats` 中处理边界情况，返回零值结构而非报错 |
 | `TimeReturn` 返回 `datetime` 键无法 JSON 序列化 | 在 `_build_time_series` 中将 `datetime` 键转换为 ISO 字符串（`dt.isoformat()`） |
+| 非等间隔 `returns_series` 使用平均间隔回推 `T0` 会扭曲年化/Sharpe | 取消平均间隔推断，改为强制显式 `period_seconds`，并在分析前校验每个相邻时间间隔一致 |
+| 单点 `returns_series` 使用“回退 1 天”缺少业务依据 | 删除 1 天硬编码默认值；缺少 `period_seconds` 直接抛错，由调用方提供明确周期 |
+| 旧测试仅断言 `total_return`，未覆盖年化/Sharpe 口径 | 扩展 `tests/test_performance_analysis.py`，增加 `annualized_return` 与 `sharpe_ratio` 回归断言 |
 
 ## Resources
 <!-- 
@@ -268,6 +279,10 @@
 - `memory-bank/progress.md`
 - `memory-bank/architecture.md`
 - `memory-bank/findings.md`
+- `src/analysis/performance.py`
+- `src/analysis/performance_trade.py`
+- `src/analysis/performance_errors.py`
+- `tests/test_performance_analysis.py`
 - `config/config.yaml`
 - `src/utils/config_defaults.py`
 - `src/utils/config_validation.py`
