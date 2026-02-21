@@ -13,7 +13,7 @@
 ### Task 1: Add failing test for REJECTED fund release
 
 **Files:**
-- Modify: `/Users/pingu/Documents/Quantitative-Trading-SIM/tests/test_order_service.py`
+- Modify: `/Users/pingu/.cursor/worktrees/Quantitative-Trading-SIM/ymr/tests/test_order_service.py`
 
 **Step 1: Write failing test**
 
@@ -42,7 +42,7 @@ def test_update_order_status_rejected_releases_frozen_funds(order_service, accou
 
 **Step 2: Run test to verify it fails**
 
-Run: `PYTHONPATH=. /Users/pingu/Documents/Quantitative-Trading-SIM/.venv/bin/pytest -q /Users/pingu/Documents/Quantitative-Trading-SIM/tests/test_order_service.py::test_update_order_status_rejected_releases_frozen_funds`
+Run: `PYTHONPATH=. /Users/pingu/Documents/Quantitative-Trading-SIM/.venv/bin/pytest -q /Users/pingu/.cursor/worktrees/Quantitative-Trading-SIM/ymr/tests/test_order_service.py::test_update_order_status_rejected_releases_frozen_funds`
 Expected: FAIL (frozen funds not released)
 
 ---
@@ -50,7 +50,7 @@ Expected: FAIL (frozen funds not released)
 ### Task 2: Implement REJECTED release + remove nested transaction
 
 **Files:**
-- Modify: `/Users/pingu/Documents/Quantitative-Trading-SIM/src/core/order_service.py`
+- Modify: `/Users/pingu/.cursor/worktrees/Quantitative-Trading-SIM/ymr/src/core/order_service.py`
 
 **Step 1: Remove nested `with tx:` block**
 
@@ -77,18 +77,18 @@ if new_status == OrderStatus.REJECTED and order.side == OrderSide.BUY:
 
 **Step 3: Run test to verify pass**
 
-Run: `PYTHONPATH=. /Users/pingu/Documents/Quantitative-Trading-SIM/.venv/bin/pytest -q /Users/pingu/Documents/Quantitative-Trading-SIM/tests/test_order_service.py::test_update_order_status_rejected_releases_frozen_funds`
+Run: `PYTHONPATH=. /Users/pingu/Documents/Quantitative-Trading-SIM/.venv/bin/pytest -q /Users/pingu/.cursor/worktrees/Quantitative-Trading-SIM/ymr/tests/test_order_service.py::test_update_order_status_rejected_releases_frozen_funds`
 Expected: PASS
 
 **Step 4: Run full order service tests**
 
-Run: `PYTHONPATH=. /Users/pingu/Documents/Quantitative-Trading-SIM/.venv/bin/pytest -q /Users/pingu/Documents/Quantitative-Trading-SIM/tests/test_order_service.py`
+Run: `PYTHONPATH=. /Users/pingu/Documents/Quantitative-Trading-SIM/.venv/bin/pytest -q /Users/pingu/.cursor/worktrees/Quantitative-Trading-SIM/ymr/tests/test_order_service.py`
 Expected: PASS
 
 **Step 5: Commit**
 
 ```bash
-git add /Users/pingu/Documents/Quantitative-Trading-SIM/src/core/order_service.py /Users/pingu/Documents/Quantitative-Trading-SIM/tests/test_order_service.py
+git add /Users/pingu/.cursor/worktrees/Quantitative-Trading-SIM/ymr/src/core/order_service.py /Users/pingu/.cursor/worktrees/Quantitative-Trading-SIM/ymr/tests/test_order_service.py
 git commit -m "fix: release frozen funds on rejected orders"
 ```
 
@@ -97,10 +97,10 @@ git commit -m "fix: release frozen funds on rejected orders"
 ### Task 3: Run full test suite and update memory-bank docs
 
 **Files:**
-- Modify: `/Users/pingu/Documents/Quantitative-Trading-SIM/memory-bank/progress.md`
-- Modify: `/Users/pingu/Documents/Quantitative-Trading-SIM/memory-bank/findings.md`
-- Modify: `/Users/pingu/Documents/Quantitative-Trading-SIM/memory-bank/architecture.md`
-- Modify: `/Users/pingu/Documents/Quantitative-Trading-SIM/memory-bank/requirements-traceability-checklist.md`
+- Modify: `/Users/pingu/.cursor/worktrees/Quantitative-Trading-SIM/ymr/memory-bank/progress.md`
+- Modify: `/Users/pingu/.cursor/worktrees/Quantitative-Trading-SIM/ymr/memory-bank/findings.md`
+- Modify: `/Users/pingu/.cursor/worktrees/Quantitative-Trading-SIM/ymr/memory-bank/architecture.md`
+- Modify: `/Users/pingu/.cursor/worktrees/Quantitative-Trading-SIM/ymr/memory-bank/requirements-traceability-checklist.md`
 
 **Step 1: Run full test suite**
 
@@ -114,6 +114,6 @@ Expected: PASS (capture actual counts)
 **Step 3: Commit**
 
 ```bash
-git add /Users/pingu/Documents/Quantitative-Trading-SIM/memory-bank/progress.md /Users/pingu/Documents/Quantitative-Trading-SIM/memory-bank/findings.md /Users/pingu/Documents/Quantitative-Trading-SIM/memory-bank/architecture.md /Users/pingu/Documents/Quantitative-Trading-SIM/memory-bank/requirements-traceability-checklist.md
+git add /Users/pingu/.cursor/worktrees/Quantitative-Trading-SIM/ymr/memory-bank/progress.md /Users/pingu/.cursor/worktrees/Quantitative-Trading-SIM/ymr/memory-bank/findings.md /Users/pingu/.cursor/worktrees/Quantitative-Trading-SIM/ymr/memory-bank/architecture.md /Users/pingu/.cursor/worktrees/Quantitative-Trading-SIM/ymr/memory-bank/requirements-traceability-checklist.md
 git commit -m "docs: sync test results and step 12 scope"
 ```
