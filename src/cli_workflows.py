@@ -18,6 +18,7 @@ from src.cli_context import (
     console,
     parse_param_pairs,
     resolve_time_range_ms,
+    write_runtime_state,
 )
 from src.data.market import MarketDataFetcher
 from src.data.storage import CandleDownloadRequest, HistoricalCandleStorage
@@ -163,11 +164,33 @@ def handle_live(ctx: CLIContext, args: Any) -> int:
     console.print(
         f"[green]实时模拟启动[/green] strategy={args.strategy} symbol={args.symbol} timeframe={args.timeframe}"
     )
+    write_runtime_state(
+        ctx.config,
+        {
+            "running": True,
+            "mode": "live",
+            "strategy": args.strategy,
+            "symbol": args.symbol,
+            "timeframe": args.timeframe,
+        },
+    )
     try:
         loop.start()
     except KeyboardInterrupt:
         loop.stop()
         console.print("[yellow]收到中断信号，已停止实时模拟[/yellow]")
+    finally:
+        write_runtime_state(
+            ctx.config,
+            {
+                "running": False,
+                "mode": "idle",
+                "strategy": args.strategy,
+                "symbol": args.symbol,
+                "timeframe": args.timeframe,
+                "iteration_count": loop.iteration_count,
+            },
+        )
 
     console.print(f"实时模拟结束，iteration_count={loop.iteration_count}")
     return 0

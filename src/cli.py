@@ -45,6 +45,7 @@ def build_parser() -> argparse.ArgumentParser:
 
     status_parser = subparsers.add_parser("status", help="查看系统状态")
     status_parser.add_argument("--disk", action="store_true", help="同时输出磁盘状态")
+    status_parser.add_argument("--alerts", action="store_true", help="输出最近监控告警")
     status_parser.set_defaults(handler=handle_status)
 
     balance_parser = subparsers.add_parser("balance", help="查看账户余额")

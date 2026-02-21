@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import os
 import time
 from dataclasses import dataclass
 from pathlib import Path
@@ -14,6 +15,13 @@ from src.core.account_service import AccountService
 from src.core.database import SQLiteDatabase
 from src.core.order_service import OrderService
 from src.core.trade_service import TradeService
+from src.live.monitor import monitor_state_path
+from src.utils.credential_vault import (
+    CredentialVaultError,
+    credential_vault_path,
+    persist_exchange_credentials,
+    read_exchange_credentials,
+)
 from src.utils.config import load_config, load_strategies_config
 
 console = Console()
@@ -47,6 +55,11 @@ def build_context(
     """Load config, open database, and build core services."""
     config = load_config(config_path=config_path, env_path=env_path)
     strategies_config = load_strategies_config(config_path=strategies_path)
+    try:
+        persist_exchange_credentials(config)
+        _reload_credentials_from_vault(config)
+    except CredentialVaultError as exc:
+        raise CLICommandError(str(exc)) from exc
 
     database = SQLiteDatabase.from_config(config)
     database.open()
@@ -120,6 +133,59 @@ def runtime_state_path(config: Mapping[str, Any]) -> Path:
     return path
 
 
+def read_monitor_state(config: Mapping[str, Any]) -> dict[str, Any]:
+    path = monitor_state_path(config)
+    if not path.exists():
+        return {
+            "strategy": {"status": "idle", "iteration_count": 0, "last_tick_ms": None, "last_error": None},
+            "account": {"total_assets": None, "base_cash": None, "positions_value": None, "updated_at_ms": None},
+            "counters": {"alerts_total": 0, "strategy_errors": 0, "network_errors": 0, "reconnect_attempts": 0},
+            "alerts": [],
+        }
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return {
+            "strategy": {"status": "corrupted"},
+            "account": {},
+            "counters": {"alerts_total": 0, "strategy_errors": 0, "network_errors": 0, "reconnect_attempts": 0},
+            "alerts": [],
+        }
+    return payload if isinstance(payload, dict) else {}
+
+
+def credential_storage_status(config: Mapping[str, Any]) -> dict[str, Any]:
+    """Return encrypted credential vault status for status query output."""
+    exchange = config.get("exchange")
+    has_plain_credentials = False
+    if isinstance(exchange, Mapping):
+        has_plain_credentials = bool(_read_str(exchange.get("api_key")) or _read_str(exchange.get("api_secret")))
+
+    path = credential_vault_path(config)
+    exists = path.exists()
+    encrypted = False
+    if exists:
+        try:
+            content = path.read_text(encoding="utf-8")
+            encrypted = ("ciphertext" in content) and ("api_key" in content) and ("api_secret" in content)
+            if has_plain_credentials:
+                raw_key = _read_str(exchange.get("api_key")) if isinstance(exchange, Mapping) else ""
+                raw_secret = _read_str(exchange.get("api_secret")) if isinstance(exchange, Mapping) else ""
+                if raw_key and raw_key in content:
+                    encrypted = False
+                if raw_secret and raw_secret in content:
+                    encrypted = False
+        except OSError:
+            encrypted = False
+
+    return {
+        "has_plain_credentials": has_plain_credentials,
+        "vault_path": str(path),
+        "vault_exists": exists,
+        "encrypted": encrypted,
+    }
+
+
 def read_runtime_state(config: Mapping[str, Any]) -> dict[str, Any]:
     path = runtime_state_path(config)
     if not path.exists():
@@ -159,3 +225,26 @@ def _coerce_value(raw: str) -> Any:
         return float(raw)
     except ValueError:
         return raw
+
+
+def _read_str(value: Any) -> str:
+    return value.strip() if isinstance(value, str) else ""
+
+
+def _reload_credentials_from_vault(config: dict[str, Any]) -> None:
+    """Load encrypted credentials into runtime config and fail fast on missing key."""
+    vault_path = credential_vault_path(config)
+    if not vault_path.exists():
+        return
+
+    master_key = _read_str(os.environ.get("CONFIG_MASTER_KEY"))
+    if not master_key:
+        raise CredentialVaultError("CONFIG_MASTER_KEY is required to load encrypted exchange credentials")
+
+    creds = read_exchange_credentials(config, master_key=master_key)
+    exchange = config.get("exchange")
+    if not isinstance(exchange, dict):
+        exchange = {}
+        config["exchange"] = exchange
+    exchange["api_key"] = creds["api_key"]
+    exchange["api_secret"] = creds["api_secret"]

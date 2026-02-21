@@ -16,10 +16,12 @@ from src.core.stop_trigger import StopTriggerEngine
 from src.core.trade_service import TradeService
 from src.data.realtime_market import RealtimeMarketDataService
 from src.data.storage import HistoricalCandleStorage
+from src.live.monitor import RuntimeMonitor
 from src.live.loop_models import RealtimeLoopConfig, RealtimeLoopError
 from src.live.loop_signal_executor import LoopSignalExecutor
 from src.live.price_service import PriceService
 from src.strategies.base import LiveStrategy, StrategyContext
+from src.utils.logger import get_logger
 
 
 class RealtimeSimulationLoop:
@@ -39,6 +41,7 @@ class RealtimeSimulationLoop:
         strategy_params: Mapping[str, Any] | None = None,
         cost_profile: ExecutionCostProfile | None = None,
         risk_limits: RiskLimits | None = None,
+        monitor: RuntimeMonitor | None = None,
     ) -> None:
         self._db = database
         self._account_service = account_service
@@ -52,6 +55,8 @@ class RealtimeSimulationLoop:
         self._strategy_params = dict(strategy_params or {})
         self._cost_profile = cost_profile or ExecutionCostProfile()
         self._risk_limits = risk_limits
+        self._monitor = monitor
+        self._strategy_logger = get_logger("strategy")
 
         # Initialize matching engines
         self._market_matching = MatchingEngine(
@@ -149,6 +154,7 @@ class RealtimeSimulationLoop:
             strategy_params=strategy_params,
             cost_profile=cost_profile,
             risk_limits=risk_limits,
+            monitor=RuntimeMonitor.from_config(config),
         )
 
     def start(self) -> None:
@@ -163,6 +169,12 @@ class RealtimeSimulationLoop:
             parameters=self._strategy_params,
         )
         self._strategy.initialize(context)
+        if self._monitor is not None:
+            self._monitor.mark_started(
+                strategy_name=self._strategy.name,
+                symbol=self._config.symbol,
+                timeframe=self._config.timeframe,
+            )
         self._running = True
 
         try:
@@ -170,6 +182,8 @@ class RealtimeSimulationLoop:
         finally:
             self._running = False
             self._strategy.stop(reason="loop terminated")
+            if self._monitor is not None:
+                self._monitor.mark_stopped(reason="loop terminated")
 
     def _run_loop(self) -> None:
         """Execute the main simulation loop."""
@@ -183,8 +197,25 @@ class RealtimeSimulationLoop:
                 snapshot = self._market_service.get_latest_price(self._config.symbol)
                 timestamp_ms = snapshot.fetched_at_ms
                 latest_price = snapshot.data.get("last_price")
+                if self._monitor is not None:
+                    self._monitor.mark_iteration(
+                        iteration_count=self._iteration_count,
+                        timestamp_ms=timestamp_ms,
+                    )
 
                 if latest_price is None or not snapshot.ok:
+                    self._strategy_logger.warning(
+                        "market snapshot unavailable symbol={} error={} fallback={} timeout={}",
+                        self._config.symbol,
+                        snapshot.error,
+                        snapshot.fallback,
+                        snapshot.timed_out,
+                    )
+                    if self._monitor is not None:
+                        self._monitor.record_network_issue(
+                            message=snapshot.error or "market snapshot unavailable",
+                            reconnect_attempted=True,
+                        )
                     time.sleep(self._config.tick_interval_seconds)
                     continue
 
@@ -193,9 +224,22 @@ class RealtimeSimulationLoop:
 
                 # Step 3: Update positions with latest price
                 try:
-                    self._price_service.valuate_portfolio()
-                except Exception:
-                    pass
+                    valuation = self._price_service.valuate_portfolio()
+                    if self._monitor is not None:
+                        self._monitor.record_account_change(
+                            base_currency=self._account_service.base_currency,
+                            total_assets=valuation.total_assets,
+                            base_cash=valuation.base_cash,
+                            positions_value=valuation.positions_value,
+                        )
+                except Exception as exc:
+                    self._strategy_logger.warning("portfolio valuation failed: {}", exc)
+                    if self._monitor is not None:
+                        self._monitor.record_alert(
+                            level="warning",
+                            category="valuation",
+                            message=f"portfolio valuation failed: {exc}",
+                        )
 
                 # Step 4: Process pending limit orders and stop triggers
                 orders_matched = 0
@@ -212,33 +256,83 @@ class RealtimeSimulationLoop:
                     "bid": snapshot.data.get("bid"),
                     "ask": snapshot.data.get("ask"),
                 }
-                strategy_signal = self._strategy.run(market_data)
+                try:
+                    strategy_signal = self._strategy.run(market_data)
+                except Exception as exc:
+                    self._strategy_logger.error(
+                        "strategy run error strategy={} symbol={} error={}",
+                        self._strategy.name,
+                        self._config.symbol,
+                        exc,
+                    )
+                    if self._monitor is not None:
+                        self._monitor.record_strategy_error(stage="run", error=exc)
+                    strategy_signal = None
 
                 # Step 7: Execute strategy signal
                 if strategy_signal:
-                    self._signal_executor.execute_signal(strategy_signal)
+                    try:
+                        self._signal_executor.execute_signal(strategy_signal)
+                    except Exception as exc:
+                        self._strategy_logger.error("signal execution failed: {}", exc)
+                        if self._monitor is not None:
+                            self._monitor.record_alert(
+                                level="error",
+                                category="signal_execution",
+                                message=f"signal execution failed: {exc}",
+                            )
 
                 # Step 8: Notify strategy of order/trade updates
-                self._signal_executor.notify_strategy_updates()
+                try:
+                    self._signal_executor.notify_strategy_updates()
+                except Exception as exc:
+                    self._strategy_logger.error("strategy notification failed: {}", exc)
+                    if self._monitor is not None:
+                        self._monitor.record_alert(
+                            level="error",
+                            category="strategy_notification",
+                            message=f"strategy notification failed: {exc}",
+                        )
 
             except Exception as exc:
-                print(f"Error in iteration {self._iteration_count}: {exc}")
+                self._strategy_logger.error("realtime loop iteration {} failed: {}", self._iteration_count, exc)
+                if self._monitor is not None:
+                    self._monitor.record_alert(
+                        level="error",
+                        category="loop_iteration",
+                        message=f"iteration {self._iteration_count} failed: {exc}",
+                    )
 
             time.sleep(self._config.tick_interval_seconds)
 
     def _persist_latest_candle(self, timestamp_ms: int, price: float) -> None:
         """Persist latest price as a candle to SQLite (runtime write path)."""
         try:
+            interval_ms = _timeframe_to_interval_ms(self._config.timeframe)
+            bucket_ts = timestamp_ms - (timestamp_ms % interval_ms)
             with self._db.transaction() as tx:
                 tx.execute(
                     """
-                    INSERT OR REPLACE INTO candles(symbol, timeframe, timestamp, open, high, low, close, volume)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, 0);
+                    INSERT INTO candles(symbol, timeframe, timestamp, open, high, low, close, volume)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, 0)
+                    ON CONFLICT(symbol, timeframe, timestamp) DO UPDATE SET
+                        high = MAX(candles.high, excluded.high),
+                        low = MIN(candles.low, excluded.low),
+                        close = excluded.close,
+                        volume = candles.volume + excluded.volume;
                     """,
-                    (self._config.symbol, self._config.timeframe, timestamp_ms, price, price, price, price),
+                    (
+                        self._config.symbol,
+                        self._config.timeframe,
+                        bucket_ts,
+                        price,
+                        price,
+                        price,
+                        price,
+                    ),
                 )
-        except Exception:
-            pass
+        except Exception as exc:
+            self._strategy_logger.warning("persist latest candle failed: {}", exc)
 
     def stop(self) -> None:
         """Stop the simulation loop."""
@@ -253,3 +347,22 @@ class RealtimeSimulationLoop:
     def iteration_count(self) -> int:
         """Get current iteration count."""
         return self._iteration_count
+
+
+def _timeframe_to_interval_ms(timeframe: str) -> int:
+    value = timeframe.strip().lower()
+    if len(value) < 2:
+        raise ValueError(f"invalid timeframe: {timeframe}")
+
+    unit = value[-1]
+    amount = int(value[:-1])
+    if amount <= 0:
+        raise ValueError(f"invalid timeframe amount: {timeframe}")
+
+    if unit == "m":
+        return amount * 60 * 1000
+    if unit == "h":
+        return amount * 60 * 60 * 1000
+    if unit == "d":
+        return amount * 24 * 60 * 60 * 1000
+    raise ValueError(f"unsupported timeframe unit: {timeframe}")

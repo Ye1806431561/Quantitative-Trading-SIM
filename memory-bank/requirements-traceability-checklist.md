@@ -1,9 +1,9 @@
-# 需求追踪清单（Phase 0-4 / Step 1-37）
+# 需求追踪清单（Phase 0-4 / Step 1-38）
 
 ## 说明
 - 来源文档：`memory-bank/product-requirement-document.md`
 - 目标：将需求逐项映射到模块与交付物，并标记范围（必选/可选）
-- 状态：已完成实施计划第 1-37 步代码与文档落地（第 34-37 步已验证通过）；第 38 步未开始
+- 状态：已完成实施计划第 1-38 步代码与文档落地（第 34-38 步已验证通过）；第 39 步未开始
 
 ## 最小可用范围（MVP）定义
 
@@ -81,14 +81,14 @@
 | NFR-EXT-02 | 插件式策略架构 | `src/strategies/` | 策略注册机制 | 必选 | - |
 | NFR-EXT-03 | 自定义指标支持 | `src/strategies/indicators/` | 指标扩展接口 | 必选 | - |
 | NFR-EXT-04 | 新交易所接入能力 | `src/data/market.py` | 交易所适配扩展点 | 必选 | - |
-| NFR-SEC-01 | API 密钥安全存储 | `.env`, `src/utils/config.py` | 环境变量加载与脱敏 | 必选 | - |
+| NFR-SEC-01 | API 密钥安全存储 | `config/.env.example`, `src/cli_context.py`, `src/utils/credential_vault.py` | 启动期主密钥校验 + 本地凭证加密存储 | 必选 | - |
 | NFR-SEC-02 | 配置文件权限控制 | `config/` | 部署规范与检查脚本 | 必选 | - |
 | NFR-SEC-03 | 日志脱敏处理 | `src/utils/logger.py` | 脱敏过滤器 | 必选 | - |
 | TC-STACK-01 | Python 3.10+ 基线与依赖兼容 | `requirements.txt`, `pyproject`（可选） | 版本约束与安装说明 | 必选 | - |
 | TC-STACK-02 | 核心依赖遵循技术栈文档 | `requirements.txt` | 锁定版本清单 | 必选 | - |
 | TC-DATA-01 | 数据模型：accounts/orders/trades/strategy_runs | `src/core/database.py` | 数据库初始化脚本 | 必选 | - |
 | TC-DATA-02 | 数据模型：positions/candles（含约束与索引） | `src/core/database.py` | 表结构与迁移脚本 | 必选 | - |
-| TC-OPS-01 | 可观测性：日志与状态查询 | `src/utils/logger.py`, `src/cli.py`, `src/cli_commands.py` | 状态命令与日志策略 | 必选 | - |
+| TC-OPS-01 | 可观测性：日志与状态查询 | `src/utils/logger.py`, `src/live/monitor.py`, `src/cli.py`, `src/cli_context.py`, `src/cli_commands.py` | 状态命令、告警查询与日志策略 | 必选 | - |
 
 ## 新增约束项：数据路径约束（强制）
 
@@ -492,4 +492,36 @@
 - [x] 本地自检通过：
   - `PYTHONPATH=. ./.venv/bin/pytest -q tests/test_cli_runtime.py tests/test_cli_workflows.py`（18 passed）
   - `PYTHONPATH=. ./.venv/bin/pytest -q`（237 passed, 54 warnings）
+- [x] 用户验证通过（2026-02-21）。
+
+## 第38步验收检查（已通过）
+
+- [x] 已实现运行监控模块 `src/live/monitor.py`，统一持久化 `monitor_state.json`：
+  - 策略状态：`strategy.status/iteration_count/last_error/started_at_ms/stopped_at_ms`；
+  - 账户快照：`account.total_assets/base_cash/positions_value`；
+  - 告警与计数器：`alerts`、`alerts_total`、`network_errors`、`reconnect_attempts`、`strategy_errors`。
+- [x] 已在 `src/live/realtime_loop.py` 集成监控与告警：
+  - 每轮迭代写入 `iteration_count` 与 `last_tick_ms`；
+  - 网络异常、估值异常、策略异常、信号执行异常、通知异常均记录为监控告警；
+  - 策略异常改为“记录告警后继续下一轮”，实现崩溃隔离。
+- [x] 已在 CLI 增加状态查询能力：
+  - `src/cli.py` 增加 `status --alerts` 参数；
+  - `src/cli_commands.py` 的 `status` 输出监控摘要与凭证加密状态，`--alerts` 输出最近告警列表；
+  - `src/cli_context.py` 增加 `read_monitor_state()` 与 `credential_storage_status()`。
+- [x] 已实现 API 凭证加密存储：
+  - 新增 `src/utils/credential_vault.py`，加密写入 `system.data_dir/secure/exchange_credentials.enc.json`；
+  - `build_context()` 启动阶段执行凭证持久化校验；
+  - 配置存在 API 凭证但缺失 `CONFIG_MASTER_KEY` 时，显式拒绝启动并给出可解释错误；
+  - 补充“Vault 存在但缺失 `CONFIG_MASTER_KEY`”的 fail-fast 场景，避免运行时鉴权延迟失败；
+  - `config/.env.example` 已补充 `CONFIG_MASTER_KEY` 模板项。
+- [x] 已修复运行态 K 线写入口径：
+  - `src/live/realtime_loop.py` 的 `_persist_latest_candle()` 改为按 `timeframe` 分箱；
+  - 同时间桶采用 `ON CONFLICT` 聚合更新 `high/low/close`，保留首笔 `open`，避免 tick 级数据膨胀。
+- [x] 已补充第 38 步自动化测试：
+  - `tests/test_monitoring.py`：监控状态查询、告警输出、凭证加密、日志脱敏、网络重试恢复、策略崩溃隔离；
+  - `tests/test_cli_runtime.py`：新增 `status --alerts` 回归。
+  - `tests/test_cli_context_credentials.py`：Vault 缺主密钥失败、凭证回填成功。
+  - `tests/test_realtime_candle_bucketing.py`：K 线分箱与 OHLC 合并。
+- [x] 本地自检通过：
+  - `PYTHONPATH=. ./.venv/bin/pytest -q`（247 passed, 54 warnings）
 - [x] 用户验证通过（2026-02-21）。
