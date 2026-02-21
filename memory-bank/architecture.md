@@ -104,7 +104,7 @@
 - `tests/test_database.py`：第 8-9 步数据库测试（生命周期 + 表结构/约束/索引/外键），用于支撑 Phase 1 第 8-9 条自动化验证。
 - `tests/test_models.py`：第 10 步领域模型测试（14 项正反例），用于支撑 Phase 1 第 10 条自动化验证。
 - `tests/test_account.py`：第 11 步账户服务测试（5 项验收测试），用于支撑 Phase 1 第 11 条自动化验证。
-- `tests/test_order_service.py`：第 12 步订单服务测试（21 项验收测试），用于支撑 Phase 1 第 12 条自动化验证。
+- `tests/test_order_service.py`：第 12 步订单服务测试（24 项验收测试），用于支撑 Phase 1 第 12 条自动化验证。
 - `tests/test_trade_service.py`：第 13 步成交记录测试（部分/全量成交、overfill 拒绝、订单关联），用于支撑 Phase 1 第 13 条自动化验证。
 - `tests/test_market_data.py`：第 14 步市场数据测试（交易所选择、限流重试、失败告知、SQLite 写入目标约束），用于支撑 Phase 1 第 14 条自动化验证。
 - `tests/test_storage.py`：第 15 步历史数据测试（分页下载落库、时间范围查询、时间序校验、参数校验），用于支撑 Phase 1 第 15 条自动化验证。
@@ -157,10 +157,11 @@
   - 全量测试 38 passed（含 `test_account` 5 项、`test_models` 14 项、`test_database` 11 项、`test_config` 5 项、`test_logger` 3 项）。
 - 第 12 步已完成并通过验证：
   - `src/core/order_service.py` 实现订单持久化接口（创建、查询、状态更新、撤销）。
-  - 实现完整的订单状态机：定义合法流转表（PENDING→OPEN→PARTIALLY_FILLED→FILLED/CANCELED），拒绝非法状态转换。
-  - 实现完整的资金管理：买单创建时冻结资金，部分成交时消耗冻结资金（从 frozen 和 balance 同时扣除），取消时释放剩余冻结资金。
-  - 支持幂等性：重复创建/取消已终态订单返回当前状态。
-  - 全量测试 59 passed（含 `test_order_service` 21 项 + 之前 38 项）。
+  - 实现完整的订单状态机：定义合法流转表（PENDING→OPEN→PARTIALLY_FILLED→FILLED/CANCELED/REJECTED），拒绝非法状态转换。
+  - 实现完整的资金管理：买单创建时冻结资金，部分成交时消耗冻结资金（从 frozen 和 balance 同时扣除），取消或 REJECTED 时释放剩余冻结资金。
+  - 支持幂等性：当调用方提供 `order_id` 时重复创建返回现有订单；重复取消已终态订单返回当前状态。
+  - `update_order_status()` 保持单层事务，移除嵌套 `with tx:`。
+  - 全量测试 62 passed（3 warnings，含 `test_order_service` 24 项 + 之前 38 项）。
 - 第 14 步已完成并通过验证：
   - `src/data/market.py` 提供统一行情接口：`fetch_ticker` / `fetch_order_book` / `fetch_ohlcv`。
   - `from_config()` 支持按配置选择交易所与限流开关；`from_exchange()` 支持注入式测试。
@@ -268,7 +269,7 @@
 - `tests/test_database.py`：第 8-9 步数据库测试（生命周期 + 表结构/约束/索引/外键），用于支撑 Phase 1 第 8-9 条自动化验证。
 - `tests/test_models.py`：第 10 步领域模型测试（14 项正反例），用于支撑 Phase 1 第 10 条自动化验证。
 - `tests/test_account.py`：第 11 步账户服务测试（5 项验收测试），用于支撑 Phase 1 第 11 条自动化验证。
-- `tests/test_order_service.py`：第 12 步订单服务测试（21 项验收测试），用于支撑 Phase 1 第 12 条自动化验证。
+- `tests/test_order_service.py`：第 12 步订单服务测试（24 项验收测试），用于支撑 Phase 1 第 12 条自动化验证。
 - `tests/test_trade_service.py`：第 13 步成交记录测试（部分/全量成交、overfill 拒绝、订单关联），用于支撑 Phase 1 第 13 条自动化验证。
 - `tests/test_market_data.py`：第 14 步市场数据测试（交易所选择、限流重试、失败告知、SQLite 写入目标约束），用于支撑 Phase 1 第 14 条自动化验证。
 - `tests/test_storage.py`：第 15 步历史数据测试（分页下载落库、时间范围查询、时间序校验、参数校验），用于支撑 Phase 1 第 15 条自动化验证。

@@ -132,6 +132,48 @@ def test_create_order_rejects_insufficient_funds(order_service, account_service)
         order_service.create_order(request)
 
 
+def test_create_order_idempotent_returns_existing(order_service):
+    """Test creating the same order_id twice returns the existing order."""
+    request = CreateOrderRequest(
+        order_id="ORD-TEST-IDEMPOTENT",
+        symbol="BTC/USDT",
+        type=OrderType.LIMIT,
+        side=OrderSide.BUY,
+        amount=0.5,
+        price=50000.0,
+    )
+    created = order_service.create_order(request)
+    repeated = order_service.create_order(request)
+
+    assert repeated.id == created.id
+    assert repeated.symbol == created.symbol
+    assert repeated.price == created.price
+
+
+def test_create_order_idempotent_rejects_mismatch(order_service):
+    """Test mismatched order_id request is rejected."""
+    request = CreateOrderRequest(
+        order_id="ORD-TEST-MISMATCH",
+        symbol="BTC/USDT",
+        type=OrderType.LIMIT,
+        side=OrderSide.BUY,
+        amount=0.5,
+        price=50000.0,
+    )
+    order_service.create_order(request)
+
+    mismatch = CreateOrderRequest(
+        order_id="ORD-TEST-MISMATCH",
+        symbol="ETH/USDT",
+        type=OrderType.LIMIT,
+        side=OrderSide.BUY,
+        amount=0.5,
+        price=50000.0,
+    )
+    with pytest.raises(OrderServiceError, match="order_id already exists"):
+        order_service.create_order(mismatch)
+
+
 # ------------------------------------------------------------------ #
 # Test order queries
 # ------------------------------------------------------------------ #
@@ -318,6 +360,28 @@ def test_update_order_status_rejects_filled_exceeding_amount(order_service):
         order_service.update_order_status(order.id, OrderStatus.PARTIALLY_FILLED, filled=1.5)
 
 
+def test_update_order_status_rejected_releases_frozen_funds(order_service, account_service):
+    """Test rejecting a buy order releases frozen funds."""
+    request = CreateOrderRequest(
+        symbol="BTC/USDT",
+        type=OrderType.LIMIT,
+        side=OrderSide.BUY,
+        amount=0.5,
+        price=50000.0,
+    )
+    order = order_service.create_order(request)
+
+    account_before = account_service.get_account("USDT")
+    assert account_before.frozen == 25000.0
+
+    rejected = order_service.update_order_status(order.id, OrderStatus.REJECTED)
+    assert rejected.status == OrderStatus.REJECTED
+
+    account_after = account_service.get_account("USDT")
+    assert account_after.frozen == 0.0
+    assert account_after.available == 100000.0
+
+
 # ------------------------------------------------------------------ #
 # Test order cancellation
 # ------------------------------------------------------------------ #
@@ -416,4 +480,3 @@ def test_cancel_order_raises_when_not_found(order_service):
     """Test canceling non-existent order raises error."""
     with pytest.raises(OrderServiceError, match="order not found"):
         order_service.cancel_order("NONEXISTENT")
-
