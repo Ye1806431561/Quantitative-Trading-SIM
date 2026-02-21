@@ -65,7 +65,9 @@ def analyze_performance(
     sharpe_ratio = _compute_sharpe_ratio(returns, risk_free_rate, series)
     sortino_ratio = _compute_sortino_ratio(returns, risk_free_rate, series)
 
-    total_trades = len(trade_log) if trade_log is not None else 0
+    total_trades, winning_trades, losing_trades, win_rate, profit_factor = _compute_trade_metrics(
+        trade_log
+    )
 
     return PerformanceSummary(
         total_return=total_return,
@@ -73,11 +75,11 @@ def analyze_performance(
         max_drawdown=max_drawdown,
         sharpe_ratio=sharpe_ratio,
         sortino_ratio=sortino_ratio,
-        win_rate=0.0,
-        profit_factor=0.0,
+        win_rate=win_rate,
+        profit_factor=profit_factor,
         total_trades=total_trades,
-        winning_trades=0,
-        losing_trades=0,
+        winning_trades=winning_trades,
+        losing_trades=losing_trades,
     )
 
 
@@ -233,3 +235,59 @@ def _compute_sortino_ratio(
     if periods is None:
         return None
     return statistics.mean(excess) / downside_dev * math.sqrt(periods)
+
+
+def _compute_trade_metrics(
+    trade_log: Sequence[Mapping[str, float]] | Sequence[object] | None,
+) -> tuple[int, int, int, float, float | None]:
+    if trade_log is None:
+        return 0, 0, 0, 0.0, 0.0
+
+    total_trades = len(trade_log)
+    if total_trades == 0:
+        return 0, 0, 0, 0.0, 0.0
+
+    winning_trades = 0
+    losing_trades = 0
+    gross_profit = 0.0
+    gross_loss = 0.0
+
+    for trade in trade_log:
+        pnl = _extract_trade_pnl(trade)
+        if pnl > 0:
+            winning_trades += 1
+            gross_profit += pnl
+        elif pnl < 0:
+            losing_trades += 1
+            gross_loss += abs(pnl)
+
+    win_rate = winning_trades / total_trades if total_trades > 0 else 0.0
+    if gross_loss > 0:
+        profit_factor: float | None = gross_profit / gross_loss
+    elif gross_profit > 0:
+        profit_factor = None
+    else:
+        profit_factor = 0.0
+
+    return total_trades, winning_trades, losing_trades, win_rate, profit_factor
+
+
+def _extract_trade_pnl(trade: Mapping[str, float] | object) -> float:
+    if isinstance(trade, Mapping):
+        if "pnl_net" in trade:
+            value = trade["pnl_net"]
+        elif "pnl_gross" in trade:
+            value = trade["pnl_gross"]
+        else:
+            raise PerformanceAnalysisError("trade log entries must include pnl_net or pnl_gross")
+    else:
+        if hasattr(trade, "pnl_net"):
+            value = getattr(trade, "pnl_net")
+        elif hasattr(trade, "pnl_gross"):
+            value = getattr(trade, "pnl_gross")
+        else:
+            raise PerformanceAnalysisError("trade log entries must include pnl_net or pnl_gross")
+
+    if not isinstance(value, (int, float)) or isinstance(value, bool):
+        raise PerformanceAnalysisError("trade pnl value must be numeric")
+    return float(value)
