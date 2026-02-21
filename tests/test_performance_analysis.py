@@ -2,7 +2,7 @@
 
 import pytest
 
-from src.analysis.performance import analyze_performance
+from src.analysis.performance import PerformanceAnalysisError, analyze_performance
 
 
 def test_equity_curve_basic_metrics() -> None:
@@ -29,10 +29,58 @@ def test_returns_series_reconstructs_equity() -> None:
     summary = analyze_performance(
         returns_series=returns,
         initial_capital=1000.0,
+        period_seconds=86400.0,
         trade_log=[],
     )
 
     assert summary.total_return == pytest.approx(0.025049, rel=1e-6)
+    
+    # 投资期总共为 3 天（T0 = 02-19, T3 = 02-22）
+    expected_annualized = (1.025049) ** (365 / 3) - 1.0
+    assert summary.annualized_return == pytest.approx(expected_annualized, rel=1e-6)
+    
+    # Sharpe Ratio 计算基准：
+    import statistics
+    import math
+    rets = [0.01, -0.005, 0.02]
+    expected_sharpe = statistics.mean(rets) / statistics.pstdev(rets) * math.sqrt(365.0)
+    assert summary.sharpe_ratio == pytest.approx(expected_sharpe, rel=1e-6)
+
+
+def test_returns_series_requires_period_seconds() -> None:
+    returns = {
+        "2026-02-20T00:00:00": 0.01,
+        "2026-02-21T00:00:00": -0.005,
+    }
+
+    with pytest.raises(
+        PerformanceAnalysisError,
+        match="period_seconds is required when using returns_series",
+    ):
+        analyze_performance(
+            returns_series=returns,
+            initial_capital=1000.0,
+            trade_log=[],
+        )
+
+
+def test_returns_series_interval_must_match_period_seconds() -> None:
+    returns = {
+        "2026-02-20T00:00:00": 0.01,
+        "2026-02-21T00:00:00": -0.005,
+        "2026-02-23T00:00:00": 0.02,
+    }
+
+    with pytest.raises(
+        PerformanceAnalysisError,
+        match="returns_series timestamp interval must match period_seconds",
+    ):
+        analyze_performance(
+            returns_series=returns,
+            initial_capital=1000.0,
+            period_seconds=86400.0,
+            trade_log=[],
+        )
 
 
 

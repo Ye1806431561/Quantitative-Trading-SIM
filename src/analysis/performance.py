@@ -8,10 +8,8 @@ import math
 import statistics
 from typing import Mapping, Sequence
 
-
-class PerformanceAnalysisError(RuntimeError):
-    """Raised when performance analysis inputs are invalid."""
-
+from src.analysis.performance_errors import PerformanceAnalysisError
+from src.analysis.performance_trade import _compute_trade_metrics
 
 @dataclass(frozen=True)
 class PerformanceSummary:
@@ -32,6 +30,7 @@ def analyze_performance(
     equity_curve: Mapping[object, float] | Sequence[tuple[object, float]] | None = None,
     returns_series: Mapping[object, float] | Sequence[tuple[object, float]] | None = None,
     initial_capital: float | None = None,
+    period_seconds: float | None = None,
     trade_log: Sequence[Mapping[str, float]] | Sequence[object] | None = None,
     risk_free_rate: float = 0.0,
 ) -> PerformanceSummary:
@@ -41,14 +40,18 @@ def analyze_performance(
     """
     if equity_curve is None and returns_series is None:
         raise PerformanceAnalysisError("equity_curve or returns_series must be provided")
+    resolved_period_seconds = _validate_period_seconds(period_seconds)
 
     if equity_curve is not None:
         series = _normalize_series(equity_curve)
         initial_equity = series[0][1]
     else:
+        if resolved_period_seconds is None:
+            raise PerformanceAnalysisError("period_seconds is required when using returns_series")
         series, initial_equity = _reconstruct_equity_curve(
             returns_series=returns_series,
             initial_capital=initial_capital,
+            period_seconds=resolved_period_seconds,
         )
 
     if len(series) < 2:
@@ -59,11 +62,26 @@ def analyze_performance(
 
     total_return = (final_equity / initial_equity) - 1.0
     max_drawdown = _compute_max_drawdown(series)
-    annualized_return = _compute_annualized_return(series, initial_equity, final_equity)
+    annualized_return = _compute_annualized_return(
+        series,
+        initial_equity,
+        final_equity,
+        period_seconds=resolved_period_seconds,
+    )
 
     returns = _compute_returns(series)
-    sharpe_ratio = _compute_sharpe_ratio(returns, risk_free_rate, series)
-    sortino_ratio = _compute_sortino_ratio(returns, risk_free_rate, series)
+    sharpe_ratio = _compute_sharpe_ratio(
+        returns,
+        risk_free_rate,
+        series,
+        period_seconds=resolved_period_seconds,
+    )
+    sortino_ratio = _compute_sortino_ratio(
+        returns,
+        risk_free_rate,
+        series,
+        period_seconds=resolved_period_seconds,
+    )
 
     total_trades, winning_trades, losing_trades, win_rate, profit_factor = _compute_trade_metrics(
         trade_log
@@ -127,10 +145,23 @@ def _parse_timestamp(value: object) -> float:
 
     raise PerformanceAnalysisError("timestamp must be int, float, or ISO string")
 
+
+def _validate_period_seconds(period_seconds: float | None) -> float | None:
+    if period_seconds is None:
+        return None
+    if not isinstance(period_seconds, (int, float)) or isinstance(period_seconds, bool):
+        raise PerformanceAnalysisError("period_seconds must be a number")
+    resolved = float(period_seconds)
+    if resolved <= 0:
+        raise PerformanceAnalysisError("period_seconds must be > 0")
+    return resolved
+
+
 def _reconstruct_equity_curve(
     *,
     returns_series: Mapping[object, float] | Sequence[tuple[object, float]] | None,
     initial_capital: float | None,
+    period_seconds: float,
 ) -> tuple[list[tuple[float, float]], float]:
     if returns_series is None:
         raise PerformanceAnalysisError("equity_curve or returns_series must be provided")
@@ -140,13 +171,26 @@ def _reconstruct_equity_curve(
         raise PerformanceAnalysisError("initial_capital must be > 0 when using returns_series")
 
     returns = _normalize_series(returns_series)
+    if len(returns) == 0:
+        raise PerformanceAnalysisError("returns_series must not be empty")
+    if len(returns) >= 2:
+        tolerance = max(1e-6, period_seconds * 1e-6)
+        for idx in range(1, len(returns)):
+            interval = returns[idx][0] - returns[idx - 1][0]
+            if abs(interval - period_seconds) > tolerance:
+                raise PerformanceAnalysisError(
+                    "returns_series timestamp interval must match period_seconds"
+                )
+
+    t0 = returns[0][0] - period_seconds
     equity_points: list[tuple[float, float]] = []
     equity = float(initial_capital)
+    equity_points.append((t0, equity))
+
     for timestamp, ret in returns:
         equity *= 1.0 + ret
         equity_points.append((timestamp, equity))
-    if not equity_points:
-        raise PerformanceAnalysisError("returns_series must not be empty")
+
     return equity_points, float(initial_capital)
 
 
@@ -178,8 +222,13 @@ def _compute_annualized_return(
     series: Sequence[tuple[float, float]],
     initial_equity: float,
     final_equity: float,
+    *,
+    period_seconds: float | None = None,
 ) -> float | None:
-    elapsed_seconds = series[-1][0] - series[0][0]
+    if period_seconds is not None:
+        elapsed_seconds = period_seconds * (len(series) - 1)
+    else:
+        elapsed_seconds = series[-1][0] - series[0][0]
     if elapsed_seconds <= 0:
         return None
     year_seconds = 365.0 * 24.0 * 3600.0
@@ -189,7 +238,14 @@ def _compute_annualized_return(
         raise PerformanceAnalysisError("annualized return overflow") from exc
 
 
-def _periods_per_year(series: Sequence[tuple[float, float]]) -> float | None:
+def _periods_per_year(
+    series: Sequence[tuple[float, float]],
+    *,
+    period_seconds: float | None = None,
+) -> float | None:
+    if period_seconds is not None:
+        year_seconds = 365.0 * 24.0 * 3600.0
+        return year_seconds / period_seconds
     elapsed_seconds = series[-1][0] - series[0][0]
     if elapsed_seconds <= 0 or len(series) < 2:
         return None
@@ -204,6 +260,8 @@ def _compute_sharpe_ratio(
     returns: Sequence[float],
     risk_free_rate: float,
     series: Sequence[tuple[float, float]],
+    *,
+    period_seconds: float | None = None,
 ) -> float | None:
     if len(returns) < 2:
         return None
@@ -211,7 +269,7 @@ def _compute_sharpe_ratio(
     stdev = statistics.pstdev(excess)
     if stdev == 0:
         return None
-    periods = _periods_per_year(series)
+    periods = _periods_per_year(series, period_seconds=period_seconds)
     if periods is None:
         return None
     return statistics.mean(excess) / stdev * math.sqrt(periods)
@@ -221,6 +279,8 @@ def _compute_sortino_ratio(
     returns: Sequence[float],
     risk_free_rate: float,
     series: Sequence[tuple[float, float]],
+    *,
+    period_seconds: float | None = None,
 ) -> float | None:
     if len(returns) < 2:
         return None
@@ -231,63 +291,7 @@ def _compute_sortino_ratio(
     downside_dev = statistics.pstdev(downside)
     if downside_dev == 0:
         return None
-    periods = _periods_per_year(series)
+    periods = _periods_per_year(series, period_seconds=period_seconds)
     if periods is None:
         return None
     return statistics.mean(excess) / downside_dev * math.sqrt(periods)
-
-
-def _compute_trade_metrics(
-    trade_log: Sequence[Mapping[str, float]] | Sequence[object] | None,
-) -> tuple[int, int, int, float, float | None]:
-    if trade_log is None:
-        return 0, 0, 0, 0.0, 0.0
-
-    total_trades = len(trade_log)
-    if total_trades == 0:
-        return 0, 0, 0, 0.0, 0.0
-
-    winning_trades = 0
-    losing_trades = 0
-    gross_profit = 0.0
-    gross_loss = 0.0
-
-    for trade in trade_log:
-        pnl = _extract_trade_pnl(trade)
-        if pnl > 0:
-            winning_trades += 1
-            gross_profit += pnl
-        elif pnl < 0:
-            losing_trades += 1
-            gross_loss += abs(pnl)
-
-    win_rate = winning_trades / total_trades if total_trades > 0 else 0.0
-    if gross_loss > 0:
-        profit_factor: float | None = gross_profit / gross_loss
-    elif gross_profit > 0:
-        profit_factor = None
-    else:
-        profit_factor = 0.0
-
-    return total_trades, winning_trades, losing_trades, win_rate, profit_factor
-
-
-def _extract_trade_pnl(trade: Mapping[str, float] | object) -> float:
-    if isinstance(trade, Mapping):
-        if "pnl_net" in trade:
-            value = trade["pnl_net"]
-        elif "pnl_gross" in trade:
-            value = trade["pnl_gross"]
-        else:
-            raise PerformanceAnalysisError("trade log entries must include pnl_net or pnl_gross")
-    else:
-        if hasattr(trade, "pnl_net"):
-            value = getattr(trade, "pnl_net")
-        elif hasattr(trade, "pnl_gross"):
-            value = getattr(trade, "pnl_gross")
-        else:
-            raise PerformanceAnalysisError("trade log entries must include pnl_net or pnl_gross")
-
-    if not isinstance(value, (int, float)) or isinstance(value, bool):
-        raise PerformanceAnalysisError("trade pnl value must be numeric")
-    return float(value)

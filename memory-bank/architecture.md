@@ -1,10 +1,10 @@
 # Architecture Notes
 
-## 当前阶段定位（2026-02-20）
+## 当前阶段定位（2026-02-21）
 
-- 仓库已完成 `implementation-plan.md` Phase 0 第 1-7 条，Phase 1 第 8-16 条，Phase 2 第 17-24 条与 Phase 3 第 25-34 条代码落地。
-- 当前处于"Phase 3 已收尾，第 34 步已验证通过"阶段：策略参数管理已打通回测与实时路径。
-- 第 35 步尚未开始（性能分析模块待实现）。
+- 仓库已完成 `implementation-plan.md` Phase 0 第 1-7 条，Phase 1 第 8-16 条，Phase 2 第 17-24 条与 Phase 3 第 25-35 条代码落地（第 35 步已通过用户验收）。
+- 当前处于“第 35 步已验收通过、等待第 36 步启动”阶段：性能分析模块已支持回测与实时统一口径。
+- 第 36 步尚未开始（等待用户启动指令）。
 - 最小交付范围仍锁定为 CLI + 模拟盘（回测与实时模拟），Web 能力保留为可选项且暂不交付。
 - **第 29 步实现与验证**：`src/live/realtime_loop.py` 实现完整的实时模拟主循环（行情拉取→策略执行→下单→撮合→持仓更新），全量测试 8 passed。实时模式的数据读取路径符合约束：先将最新行情落 SQLite，策略可从 SQLite 读取历史数据；CSV/Parquet 不参与运行态读写。
 
@@ -82,13 +82,14 @@
 - `src/backtest/result_models.py`：第 27 步回测结果数据模型（`BacktestRunResult`、`TradeStatistics`、`RiskMetrics`、`ReturnsAnalysis`），定义统一的回测输出结构。
 - `src/backtest/result_builder.py`：第 27 步分析器结果转换器（`AnalyzerResultBuilder`），负责将 Backtrader 原始分析器输出转换为统一数据模型。
 - `src/backtest/exporter.py`：第 28 步回测结果导出模块（`BacktestResultExporter`），提供摘要报告与资金曲线的 CSV/JSON 导出能力，支持自定义文件名前缀与自动创建输出目录。
--│   ├── live/              # 实时模拟 (Live Simulation)
-│   │   ├── loop_models.py        # 实时循环数据模型
-│   │   ├── loop_signal_executor.py # 信号执行与通知处理器
-│   │   ├── price_service.py      # 价格估值服务
-│   │   ├── realtime_loop.py      # 实时模拟主循环
-│   │   └── simulator.py          # 策略生命周期驱动器
- `StrategyLifecycleDriver`，用于触发策略生命周期回调（非第 29 步实时主循环）。
+- `src/analysis/performance.py`：第 35 步通用性能分析编排入口，统一支持 `equity_curve` 直接分析与 `returns_series + period_seconds` 反推分析。
+- `src/analysis/performance_trade.py`：第 35 步交易统计构建模块，负责从成交明细计算次数、胜率、盈亏比等交易维度指标。
+- `src/analysis/performance_errors.py`：第 35 步性能分析异常定义模块，统一参数错误与输入校验错误语义。
+- `tests/test_performance_analysis.py`：第 35 步性能分析测试，覆盖收益/风险指标、周期参数校验、间隔一致性校验。
+- `src/live/loop_models.py`：实时循环数据模型定义。
+- `src/live/loop_signal_executor.py`：信号执行与通知处理处理器。
+- `src/live/price_service.py`：价格估值与资产汇总服务。
+- `src/live/simulator.py`：`StrategyLifecycleDriver` 所在模块，用于触发策略生命周期回调（非第 29 步实时主循环）。
 - `src/live/realtime_loop.py`：第 29 步实时模拟主循环实现（`RealtimeSimulationLoop`），整合市场数据、策略执行、撮合引擎、持仓更新的完整闭环；实现 8 步循环逻辑（拉取行情→持久化 K 线→更新估值→处理挂单→运行策略→执行信号→通知更新）；支持三种订单类型执行（市价/限价/止损止盈）；符合运行态写入路径约束（最新行情先落 SQLite）。
 - `src/live/*.py`（其余）：实时模拟扩展占位，用于承接第 30 步及后续。
 - `src/utils/config.py`：配置加载编排层；负责执行 `默认值 < YAML < 环境变量` 的合并顺序，并提供统一入口。
@@ -150,6 +151,7 @@
 - 通过“未知字段拒绝 + 参数关系校验”将配置错误前置到启动阶段，减少运行中故障面。
 - 第 34 步新增策略参数管理：`StrategyRegistry` + `StrategyParamResolver` 统一参数合并入口，显式参数覆盖配置；实时循环将合并参数注入 `StrategyContext.parameters`。
 - 第 7 步日志方案已直接消费 `load_config()` 产出的 `logging` 配置，避免重复解析配置逻辑。
+- 第 35 步新增“显式周期元数据”架构约束：当输入为 `returns_series` 时，必须显式传入 `period_seconds`，并强校验时间戳间隔一致性，防止年化收益与 Sharpe/Sortino 在非等间隔数据下发生系统性偏差。
 - 第 9 步已完成并通过验证；下一步（第 10 步）应仅推进领域模型与校验规则定义，不提前进入账户/订单流程实现。
 - 第 11 步已完成并通过验证：
   - `src/core/account_service.py` 实现账户生命周期管理（初始化、查询、余额变更、持仓恢复、总资产估值）。
