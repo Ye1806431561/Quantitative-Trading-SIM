@@ -9,10 +9,11 @@
 - 第 38 步已验收通过（运行状态与监控输出）。
 - 第 39 步已验收通过（单元/集成测试套件 + 覆盖率记录 + warning 基线治理）。
 - 第 40 步已验收通过（性能基准：回测速度 + 实时延迟 + 订单响应）。
-- 第 41 步未开始。
+- 第 41 步已验收通过（README/使用文档中文化 + 口径统一）。
+- 第 42 步未开始（等待你下达启动指令）。
 
 ## 未解决问题清单
-- 暂无阻塞项。
+- 暂无阻塞问题；第 42 步尚未开始。
 
 ## 历史归档
 - [2026-02-15](progress_archive/2026-02-15.md)
@@ -24,6 +25,37 @@
 - [2026-02-22](progress_archive/2026-02-22.md)
 
 ## 最近的关键变更
+
+## 2026-02-22（第 41 步）
+
+### 本次目标
+- 执行 `implementation-plan.md` Phase 4 第 41 条：更新 README/使用文档，覆盖环境搭建、数据下载、回测、实时模拟全流程。
+
+### 已完成事项
+- 更新根文档 `README.md`：
+  - 补充环境要求、安装步骤、配置准备、凭证加密约束。
+  - 新增“端到端快速流程”：
+    - `status` 基线检查；
+    - `download` 下载历史 K 线；
+    - `backtest` 回测并导出报告与图表；
+    - `live` 有界实时模拟；
+    - `status --alerts` / `balance` / `positions` 运行态检查。
+  - 补充第 40 步 `benchmark` 命令使用说明与测试命令。
+- 新增使用文档 `docs/usage-guide.md`：
+  - 覆盖全量 CLI 命令组：`start/stop/status`、`download/import/export/cleanup/reconcile`、`order`、`backtest`、`live`、`benchmark`。
+  - 提供参数化示例、策略名约束、常见问题与排错建议。
+  - 新增“第 41 步验收检查清单”，用于独立跑通下载→回测→实时模拟闭环。
+- 保持步骤边界：未启动第 42 步开发。
+
+### 文档一致性自检
+- `PYTHONPATH=. ./.venv/bin/python main.py --help`
+- `PYTHONPATH=. ./.venv/bin/python main.py backtest --help`
+- `PYTHONPATH=. ./.venv/bin/python main.py live --help`
+- `PYTHONPATH=. ./.venv/bin/python main.py export --help`
+
+### 验收状态
+- 第 41 步已通过用户验收（2026-02-22，临时通过）。
+- 第 42 步未开始（遵循步骤边界，等待你确认启动）。
 
 ## 2026-02-22（第 40 步）
 
@@ -61,4 +93,4 @@
 
 ### 验收状态
 - 第 40 步已通过用户验收（2026-02-22）。
-- 第 41 步未开始（遵循步骤边界）。
+- （历史记录）该时点第 41 步尚未开始（遵循步骤边界）。

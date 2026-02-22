@@ -3,7 +3,7 @@
 ## 说明
 - 来源文档：`memory-bank/product-requirement-document.md`
 - 目标：将需求逐项映射到模块与交付物，并标记范围（必选/可选）
-- 状态：已完成实施计划第 1-40 步代码与文档落地并通过验收（第 34-40 步已验证通过）；第 41 步未开始
+- 状态：已完成实施计划第 1-41 步代码与文档落地并通过验收（第 34-41 步已验证通过）；第 42 步未开始
 
 ## 最小可用范围（MVP）定义
 
@@ -526,7 +526,7 @@
   - `PYTHONPATH=. ./.venv/bin/pytest -q`（247 passed, 54 warnings）
 - [x] 用户验证通过（2026-02-21）。
 
-## 第39步验收检查（待验证）
+## 第39步验收检查（已通过）
 
 - [x] 已建立单元与集成测试套件分层：
   - 新增 `pytest.ini`，注册 `unit`、`integration` marker；
@@ -585,4 +585,24 @@
     - `realtime_p95_ms=0.725417`
     - `order_p95_ms=0.928042`
     - `evaluation=pass`
-- [x] 用户验证通过（2026-02-22）；第 41 步仍未启动。
+- [x] 用户验证通过（2026-02-22）。
+
+## 第41步验收检查（已通过）
+
+- [x] 已更新 `README.md`，覆盖：
+  - 环境搭建（venv、依赖安装、`.env` 准备）；
+  - 数据下载（`download`）；
+  - 回测执行与导出（`backtest --output-dir`）；
+  - 实时模拟（`live --max-iterations`）；
+  - 监控查询（`status --alerts` / `balance` / `positions`）；
+  - 性能基准命令（`benchmark`）入口说明。
+- [x] 已新增使用文档 `docs/usage-guide.md`：
+  - 全量 CLI 命令族（系统、数据、订单、回测、实时、基准）参数示例；
+  - 端到端验收流程（下载 → 回测 → 实时模拟 → 状态确认）；
+  - 常见错误与排查建议。
+- [x] 文档命令一致性自检通过：
+  - `PYTHONPATH=. ./.venv/bin/python main.py --help`
+  - `PYTHONPATH=. ./.venv/bin/python main.py backtest --help`
+  - `PYTHONPATH=. ./.venv/bin/python main.py live --help`
+  - `PYTHONPATH=. ./.venv/bin/python main.py export --help`
+- [x] 用户验证通过（2026-02-22，临时通过；第 42 步仍未启动）。

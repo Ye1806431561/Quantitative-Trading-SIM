@@ -28,7 +28,7 @@
 - 第 39 步已完成并通过用户验收（单元/集成测试套件与覆盖率记录）。
 - 第 39 步 warning 噪音治理已完成（P0/P1/P2），当前本地回归为 0 warnings。
 - 第 40 步已完成并通过用户验收（性能基准：回测速度 + 实时延迟 + 订单响应）。
-- 第 41 步尚未开始。
+- 第 41 步已通过用户验收（README/使用文档更新，且两文档术语口径已统一）。
 
 ## Research Findings
 <!-- 
@@ -196,6 +196,11 @@
     - `tests/test_benchmark_executors.py + tests/test_benchmark_reporter.py + tests/test_benchmark_runner.py + tests/test_cli_benchmark.py`：`21 passed`
     - 全量回归：`272 passed`
     - `main.py benchmark --seed 42 --realtime-iterations 5 --order-iterations 10`：`backtest_seconds=0.718607`、`realtime_p95_ms=0.725417`、`order_p95_ms=0.928042`、`evaluation=pass`
+- **Step 41 实现发现（2026-02-22）**：
+  - README 需要从“单点模块说明（日志）”升级为“可执行流程文档”，否则无法支撑独立跑通下载→回测→实时模拟的验收标准。
+  - 使用文档应与 CLI 参数定义严格对齐；例如 `export` 不支持 `--days`，必须使用 `--start-ms/--end-ms`。
+  - 文档应明确凭证安全边界：当配置 API 凭证时必须提供 `CONFIG_MASTER_KEY`，否则 CLI 启动会 fail-fast。
+  - 第 41 步落地后新增 `docs/usage-guide.md` 作为命令级手册，`README.md` 保留“快速闭环”路径，形成“快速上手 + 详细参考”双层文档结构。
 
 ## Technical Decisions
 <!-- 

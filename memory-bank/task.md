@@ -49,5 +49,5 @@
 - [x] 38. Implement operation status & monitoring <!-- id: 37 -->
 - [x] 39. Establish unit & integration test suites（已验收通过；含 warning 基线治理） <!-- id: 38 -->
 - [x] 40. Perform performance benchmarking（已验收通过） <!-- id: 39 -->
-- [ ] 41. Update README & documentation <!-- id: 40 -->
+- [x] 41. Update README & documentation（已验收通过：中文化与口径统一） <!-- id: 40 -->
 - [ ] 42. Final regression check <!-- id: 41 -->

@@ -3,9 +3,9 @@
 ## 当前阶段定位（2026-02-22）
 
 - 仓库已完成 `implementation-plan.md` Phase 0 第 1-7 条，Phase 1 第 8-16 条，Phase 2 第 17-24 条，Phase 3 第 25-35 条，Phase 4 第 36-40 条代码落地并通过用户验收（第 35-40 步已验收通过）。
-- 当前处于“第 40 步已验收通过、第 41 步未开始”阶段。
+- 第 41 步（README/使用文档更新）已通过用户验收（文档中文化并统一术语口径）。
 - 第 39 步补充完成 warning 基线治理（SQLite 连接生命周期 + converter 迁移 + pytest warning-as-error），当前全量测试为 0 warnings。
-- 第 41 步尚未启动。
+- 第 42 步尚未启动（等待用户下达启动指令）。
 - 最小交付范围仍锁定为 CLI + 模拟盘（回测与实时模拟），Web 能力保留为可选项且暂不交付。
 - **第 29 步实现与验证**：`src/live/realtime_loop.py` 实现完整的实时模拟主循环（行情拉取→策略执行→下单→撮合→持仓更新），全量测试 8 passed。实时模式的数据读取路径符合约束：先将最新行情落 SQLite，策略可从 SQLite 读取历史数据；CSV/Parquet 不参与运行态读写。
 
@@ -159,7 +159,7 @@
 - `pytest.ini`：第 39 步 pytest 套件配置，注册 `unit/integration` marker、统一测试发现路径，并将 `DeprecationWarning`/`ResourceWarning`/`PytestUnraisableExceptionWarning` 提升为 error。
 - `tests/*.py`（其余）：测试模块占位，用于承接 Phase 4 第 40 条及后续。
 - `requirements.txt`：当前仓库依赖清单入口（安装/CI 统一来源）；后续若恢复严格锁定版本，应与 Phase 0 第 4 条验收口径保持一致。
-- `README.md`：补充第 7 步日志方案说明与手工演练步骤，作为日志策略落地说明文档。
+- `README.md`：第 41 步更新为完整使用入口，覆盖环境搭建、下载、回测、实时模拟与基准命令快速闭环。
 - `main.py`：程序入口，调用 `src/cli.py` 执行命令分发。
 
 ## 本轮新增架构洞察
@@ -168,7 +168,7 @@
   - 加载层：`src/utils/config.py`
   - 默认值与映射层：`src/utils/config_defaults.py`
   - 校验层：`src/utils/config_validation.py`
-- 日志层：`src/utils/logger.py` + `tests/test_logger.py` + `README.md`（方案说明）+ `tests/verify_step_7.py`（手工演练）
+- 文档层：`README.md`（快速闭环）+ `docs/usage-guide.md`（命令级手册）+ `memory-bank/*`（设计与追踪）。
 - 数据层生命周期基线：`src/core/database.py` + `tests/test_database.py`
   - 连接管理：`open()` / `close()`
   - 事务边界：`transaction()` 自动提交与异常回滚
@@ -346,7 +346,7 @@
 - `tests/test_backtest_analyzers.py`：第 27 步标准分析器测试（5 个分析器输出完整性、无交易边界情况、Sharpe 比率边界情况、时间序列格式、字段完整性），用于支撑 Phase 3 第 27 条自动化验证。
 - `tests/*.py`（其余）：测试模块占位，用于承接 Phase 4 第 39 条。
 - `requirements.txt`：当前仓库依赖清单入口（安装/CI 统一来源）；后续若恢复严格锁定版本，应与 Phase 0 第 4 条验收口径保持一致。
-- `README.md`：补充第 7 步日志方案说明与手工演练步骤，作为日志策略落地说明文档。
+- `README.md`：第 41 步更新为完整使用入口，覆盖环境搭建、下载、回测、实时模拟与基准命令快速闭环。
 - `main.py`：程序入口，调用 `src/cli.py` 执行命令分发。
 
 ## 本轮新增架构洞察
@@ -355,7 +355,7 @@
   - 加载层：`src/utils/config.py`
   - 默认值与映射层：`src/utils/config_defaults.py`
   - 校验层：`src/utils/config_validation.py`
-- 日志层：`src/utils/logger.py` + `tests/test_logger.py` + `README.md`（方案说明）+ `tests/verify_step_7.py`（手工演练）
+- 文档层：`README.md`（快速闭环）+ `docs/usage-guide.md`（命令级手册）+ `memory-bank/*`（设计与追踪）。
 - 数据层生命周期基线：`src/core/database.py` + `tests/test_database.py`
   - 连接管理：`open()` / `close()`
   - 事务边界：`transaction()` 自动提交与异常回滚
