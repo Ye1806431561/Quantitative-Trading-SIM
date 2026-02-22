@@ -31,6 +31,7 @@
 - 第 41 步已通过用户验收（README/使用文档更新，且两文档术语口径已统一）。
 - 第 42 步已通过用户验收：需求追踪清单总回归完成，实施计划第 1-42 步闭环。
 - 新增后续修复任务：解决 15m `--days 365` 下载样本窗口不足（仅约 1704 bars）并增强覆盖率可观测性。
+- 新增后续安全加固任务：建立提交前密钥防泄漏闸门（`.env.schema` + `scripts/check-secrets.sh` + `.githooks/pre-commit`）。
 
 ## Research Findings
 <!-- 
@@ -213,6 +214,11 @@
   - 仅展示 `downloaded_count` 不足以判断“时间覆盖度”，需要同时展示 `stored_count/expected_count/coverage/span_days`。
   - 当覆盖率显著不足时（阈值 `<90%`），CLI 应主动给出“主网配置 + 独立 DATABASE_PATH”建议，避免用户误判为回测引擎问题。
   - 为保持默认安全基线，应保留 `config/config.yaml` 的 testnet 设置，单独新增 `config/config.mainnet.yaml`。
+- **后续安全加固发现（2026-02-22，提交前密钥防泄漏）**：
+  - 仅依赖 `.gitignore` 无法覆盖“手动 `git add -f`、误选 staged 文件、复制粘贴密钥到 tracked 文件”三类高风险路径。
+  - 运行时凭证加密（Vault）解决的是“本地落盘安全”，不能替代“版本库上传安全”；两者必须分层治理。
+  - 通过 `.env.schema`（敏感契约）+ `varlock load`（脱敏校验）+ pre-commit（提交阻断）可形成开发流程层的第一道强闸门。
+  - 提交前扫描应同时覆盖“敏感路径阻断 + 常见 token/私钥模式检测”，避免仅靠路径规则出现漏检。
 
 ## Technical Decisions
 <!-- 
@@ -329,6 +335,9 @@
 | 性能评估采用“回测分级 + 实时/订单硬阈值” | 同时满足硬目标（<5s）与降级容忍（<10s），并对实时交易链路保持严格门槛 |
 | 基准测量区间启用 I/O 抑制 | 降低 stdout/stderr/loguru 输出抖动对毫秒级指标的干扰，提升结果稳定性 |
 | 基准报告固定 JSON+Markdown 双产物 | 兼顾机器消费与人工审阅，便于追踪历史趋势和验收留档 |
+| 引入 `.env.schema` 作为环境变量敏感契约 | 在开发阶段显式标注敏感字段与校验规则，统一 Varlock 校验输入，减少“凭证字段口径不一致”风险 |
+| 引入 `scripts/check-secrets.sh` + `.githooks/pre-commit` 作为提交闸门 | 在 Git 提交前阻断敏感路径与疑似密钥文本，避免凭证进入版本库历史 |
+| 凭证安全采用“运行时 Vault + 提交前 pre-commit”双层防线 | 运行时防明文落盘，提交前防误上传，覆盖不同威胁面并降低单点防护失效风险 |
 
 ## Issues Encountered
 <!-- 
@@ -379,6 +388,7 @@
 | 性能基准易受日志/控制台输出噪音影响 | 在测量区间引入 `_suppress_io()`（stdout/stderr 重定向 + loguru 临时禁用）保证计时稳定 |
 | 回测/实时/订单共用数据库会造成状态污染 | 基准改为每项使用独立 SQLite 文件（backtest/realtime/order 各自隔离） |
 | 仅报告单一耗时不利于定位尾部抖动 | 实时与订单统一输出 `mean/p95/max`，并以 `p95` 作为阈值判定主口径 |
+| 仅靠 `.gitignore` 仍可能误传密钥（`git add -f` / staged 误选） | 增加 pre-commit 闸门统一执行敏感路径阻断与疑似密钥模式扫描 |
 
 ## Resources
 <!-- 
@@ -391,6 +401,7 @@
 -->
 <!-- URLs, file paths, API references -->
 - Python sqlite3 文档（Connection 上下文管理器/ResourceWarning）：https://docs.python.org/3.13/library/sqlite3.html
+- Varlock 文档：https://varlock.dev
 - `memory-bank/CLAUDE.md`
 - `memory-bank/product-requirement-document.md`
 - `memory-bank/implementation-plan.md`
@@ -436,6 +447,9 @@
 - `requirements.txt`
 - `src/utils/config_defaults.py`
 - `src/utils/config_validation.py`
+- `.env.schema`
+- `scripts/check-secrets.sh`
+- `.githooks/pre-commit`
 - `tests/test_config.py`
 - `src/core/enums.py`
 - `src/core/validation.py`

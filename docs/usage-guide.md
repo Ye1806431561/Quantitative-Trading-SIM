@@ -16,6 +16,25 @@
 python main.py [--config config/config.yaml] [--strategies config/strategies.yaml] [--env .env] <command> [...args]
 ```
 
+## 密钥与提交前检查
+
+建议在本地启用 Varlock 与提交前检查，避免误传密钥：
+
+```bash
+# 环境变量校验（会脱敏输出）
+varlock load
+
+# 启用仓库自带 pre-commit 钩子
+git config core.hooksPath .githooks
+```
+
+钩子执行脚本：`scripts/check-secrets.sh`，默认会阻止提交：
+
+- `.env` / `.env.*`
+- `data/secure/` 下的凭证文件
+- `data/database/*.db` / `*.sqlite*`
+- 常见高风险密钥模式（如私钥头、部分云/平台 token）
+
 ## 系统运行命令
 
 ### `start` / `stop` / `status`

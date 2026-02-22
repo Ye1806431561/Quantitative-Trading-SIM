@@ -124,6 +124,15 @@ black==23.12.0
 
 **总计**: 仅 11 个核心依赖（不含开发工具）
 
+### 开发安全工具（可选，推荐）
+```
+Varlock CLI              # 环境变量敏感字段校验与脱敏输出
+Git hooks (pre-commit)   # 提交前阻断敏感文件与疑似密钥文本
+```
+**说明**:
+- 上述工具属于开发流程防护，不属于应用运行时 Python 依赖；
+- 当前仓库通过 `.env.schema`、`scripts/check-secrets.sh`、`.githooks/pre-commit` 接入该能力。
+
 ---
 
 ## 项目结构（最简化）
@@ -370,6 +379,10 @@ pip install -r requirements.txt
 
 # 配置环境变量
 cp config/.env.example .env
+
+# （推荐）启用提交前密钥检查
+git config core.hooksPath .githooks
+varlock load
 ```
 
 ### 2. 初始化数据库
@@ -489,4 +502,3 @@ pytest --cov=src --cov-report=html
 **文档版本**: v1.0  
 **创建日期**: 2026-02-14  
 **技术栈原则**: 最简单 + 最健壮 = 只选必需品
-

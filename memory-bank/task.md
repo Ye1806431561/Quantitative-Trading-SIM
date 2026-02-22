@@ -51,3 +51,8 @@
 - [x] 40. Perform performance benchmarking（已验收通过） <!-- id: 39 -->
 - [x] 41. Update README & documentation（已验收通过：中文化与口径统一） <!-- id: 40 -->
 - [x] 42. Final regression check（已验收通过） <!-- id: 41 -->
+
+## Post-42: 后续加固（不影响原 1-42 里程碑）
+- [x] A1. 修复 15m 长窗口样本覆盖可观测性（`stored_count/expected_count/coverage/span_days`）
+- [x] A2. 新增主网隔离配置模板（`config/config.mainnet.yaml`）
+- [x] A3. 建立提交前密钥防泄漏闸门（`.env.schema` + `scripts/check-secrets.sh` + `.githooks/pre-commit`）

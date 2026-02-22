@@ -11,10 +11,11 @@
 - 第 40 步已验收通过（性能基准：回测速度 + 实时延迟 + 订单响应）。
 - 第 41 步已验收通过（README/使用文档中文化 + 口径统一）。
 - 第 42 步已验收通过（需求追踪清单总回归检查）。
+- 第 42 步后续修复已完成并验证（主网 15m 长窗口覆盖可观测性 + 提交前密钥防泄漏加固）。
 
 ## 未解决问题清单
 - 暂无阻塞问题；实施计划第 1-42 步已全部完成并验收通过。
-- 新增后续修复项：15m 长窗口下载样本覆盖率可观测性与主网配置指引（已实现，待用户验收）。
+- 后续修复项（15m 长窗口覆盖可观测性）已通过实机验证：`bars_processed` 可达 `35040`（15m、365 天）。
 
 ## 历史归档
 - [2026-02-15](progress_archive/2026-02-15.md)
@@ -26,6 +27,25 @@
 - [2026-02-22](progress_archive/2026-02-22.md)
 
 ## 最近的关键变更
+
+## 2026-02-22（后续安全加固：提交前密钥防泄漏）
+
+### 本次目标
+- 在不修改业务功能的前提下，补齐“版本库上传安全”防线，避免 `.env`、Vault 凭证或疑似密钥文本误提交。
+
+### 已完成事项
+- 新增环境变量契约文件：`.env.schema`，定义敏感字段与校验规则（`EXCHANGE_API_KEY`、`EXCHANGE_API_SECRET`、`CONFIG_MASTER_KEY`）。
+- 新增提交前检查脚本：`scripts/check-secrets.sh`，统一执行：
+  - `varlock load` 脱敏校验；
+  - 阻断 `.env` / `data/secure/` / `data/database/*.db|*.sqlite*` 等敏感路径提交；
+  - 扫描 staged diff 中的常见高风险密钥模式（私钥头、常见 token 前缀等）。
+- 新增 Git 钩子入口：`.githooks/pre-commit`，提交前自动调用 `scripts/check-secrets.sh`。
+- 启用仓库钩子路径：`git config core.hooksPath .githooks`。
+
+### 本地验证结果
+- `varlock load`：通过（敏感值已脱敏，不回显明文）。
+- `scripts/check-secrets.sh`：通过（退出码 0）。
+- `.githooks/pre-commit`：可执行并通过（退出码 0）。
 
 ## 2026-02-22（后续修复：主网15m样本窗口）
 

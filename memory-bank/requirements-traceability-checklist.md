@@ -635,3 +635,22 @@
 - [x] 本地回归验证：
   - `PYTHONPATH=. ./.venv/bin/pytest -q tests/test_storage.py tests/test_cli_workflows.py`（23 passed）；
   - `PYTHONPATH=. ./.venv/bin/pytest -q`（277 passed）。
+
+## 后续安全加固记录（2026-02-22，提交前密钥防泄漏）
+
+- [x] 关联需求：
+  - `NFR-SEC-01` API 密钥安全存储（补齐开发阶段敏感字段契约）；
+  - `NFR-SEC-02` 配置文件权限控制（补齐提交前拦截机制）；
+  - `NFR-SEC-03` 日志/敏感信息处理（补齐提交阶段敏感模式扫描兜底）。
+- [x] 新增环境变量契约：`.env.schema`
+  - 显式标注 `EXCHANGE_API_KEY`、`EXCHANGE_API_SECRET`、`CONFIG_MASTER_KEY` 为敏感字段；
+  - 提供类型与最小规则（如主密钥最小长度）供 Varlock 校验。
+- [x] 新增提交前检查链路：
+  - `scripts/check-secrets.sh`：执行 `varlock load`、敏感路径阻断、staged diff 疑似密钥扫描；
+  - `.githooks/pre-commit`：统一调用 `scripts/check-secrets.sh`。
+- [x] 已启用仓库级 Git hooks：
+  - `git config core.hooksPath .githooks`
+- [x] 可复核命令与状态：
+  - `varlock load`（通过，敏感值脱敏显示）；
+  - `scripts/check-secrets.sh`（通过，退出码 0）；
+  - `.githooks/pre-commit`（通过，退出码 0）。

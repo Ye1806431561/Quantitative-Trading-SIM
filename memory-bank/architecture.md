@@ -6,6 +6,7 @@
 - 第 41 步（README/使用文档更新）已通过用户验收（文档中文化并统一术语口径）。
 - 第 39 步补充完成 warning 基线治理（SQLite 连接生命周期 + converter 迁移 + pytest warning-as-error），当前全量测试为 0 warnings。
 - 第 42 步已通过用户验收：需求追踪清单总回归完成，实施计划第 1-42 步全部闭环。
+- 第 42 步后新增两项后续加固并已落地：15m 主网长窗口数据覆盖率可观测性增强、提交前密钥防泄漏闸门（Varlock + pre-commit）。
 - 最小交付范围仍锁定为 CLI + 模拟盘（回测与实时模拟），Web 能力保留为可选项且暂不交付。
 - **第 29 步实现与验证**：`src/live/realtime_loop.py` 实现完整的实时模拟主循环（行情拉取→策略执行→下单→撮合→持仓更新），全量测试 8 passed。实时模式的数据读取路径符合约束：先将最新行情落 SQLite，策略可从 SQLite 读取历史数据；CSV/Parquet 不参与运行态读写。
 
@@ -69,6 +70,9 @@
 - `src/data/market_policy.py`：市场数据配置与策略约束（`RetryPolicy`、运行态写入目标校验）。
 - `src/data/market_retry.py`：本地限流器与错误分类（限流类/可重试类/不可重试类）。
 - `src/data/storage.py`：历史 K 线下载、缓存与去重存储实现（`HistoricalCandleStorage`），提供下载落库、缓存命中与按 `symbol/timeframe/time range` 查询能力（第 15-16 步）。
+- `src/data/storage_types.py`：后续修复拆分出的数据层类型定义模块，集中维护 `CandleDownloadRequest`/`CandleDownloadResult` 与 `HistoricalDataStorageError`。
+- `src/data/timeframe_metrics.py`：后续修复新增的时间窗度量模块，统一 `timeframe -> ms` 映射、理论 bars 估算与覆盖率计算。
+- `src/data/candle_window_stats.py`：后续修复新增的窗口统计模块，从 SQLite 读取 `stored_count/first_timestamp/last_timestamp` 并构建 `coverage_ratio/span_days`。
 - `src/data/feed.py`：第 26 步 SQLite→Pandas 数据馈送桥接，实现回测数据切片查询与 `backtrader.feeds.PandasData` 适配。
 - `src/data/realtime_market.py`：实时行情读取服务实现（最新价/深度/K 线），提供超时控制与错误兜底（第 17 步）。
 - `src/data/realtime_payloads.py`：实时行情统一返回结构与载荷归一化工具，确保三类接口结构一致（第 17 步）。
@@ -120,8 +124,12 @@
 - `src/utils/config_validation.py`：配置校验层；负责主配置与策略配置的类型、范围、关系约束校验。
 - `src/utils/logger.py`：日志初始化与分流实现层；负责控制台 + 文件输出、分级过滤、轮转/保留/压缩参数接入、敏感信息脱敏。
 - `config/config.yaml`：系统主配置模板，承载系统、日志、交易所、账户、交易、风控、回测字段，是运行参数的 YAML 主入口。
+- `config/config.mainnet.yaml`：后续修复新增主网配置模板，仅将 `exchange.testnet` 设为 `false`；用于长窗口历史下载与回测，默认 `config/config.yaml` 仍保持 testnet 安全基线。
 - `config/strategies.yaml`：策略配置模板，承载内置策略启停与参数字段，是策略实例化的 YAML 输入入口。
 - `config/.env.example`：环境变量模板，承载敏感或环境相关键值（API、数据库路径、日志级别），是 `.env` 初始化参考。
+- `.env.schema`：后续安全加固新增环境变量契约文件，标注敏感级别与校验规则，供 Varlock 在开发阶段执行脱敏校验。
+- `scripts/check-secrets.sh`：后续安全加固新增提交前密钥检查脚本，阻断 `.env`/`data/secure`/数据库文件与疑似密钥文本进入提交。
+- `.githooks/pre-commit`：后续安全加固新增 Git 钩子入口，统一调用 `scripts/check-secrets.sh`。
 - `tests/test_config.py`：配置层验收测试（优先级三场景 + 关键反例），用于支撑 Phase 0 第 6 条验收。
 - `tests/test_logger.py`：日志层验收测试（分流、脱敏、非法类型防御），用于支撑 Phase 0 第 7 条自动化验证。
 - `tests/verify_step_7.py`：第 7 步手工演练脚本，用于触发多级日志并检查日志文件落盘与脱敏结果。
@@ -202,6 +210,10 @@
 - 第 40 步新增 I/O 抑制约束：基准测量区间统一屏蔽 stdout/stderr 并临时禁用 loguru 发射，避免日志与控制台输出干扰时间测量。
 - 第 40 步验收补充修复：实时延迟采样改为“每轮迭代 start/end”口径；执行器失败路径连接关闭与策略参数异常封装补齐；报告同秒防覆盖与 `output-dir` 类型校验补齐。
 - 第 40 步最终状态：用户已验收通过，当前全量测试 `272 passed`。
+- 后续修复新增“下载覆盖率可观测链路”：`download` 命令统一输出 `downloaded_count/stored_count/expected_count/coverage/span_days`，`backtest` 在低覆盖率场景输出预警并给出主网修复路径。
+- 后续安全加固新增“双层防线”：
+  - 运行时凭证安全：`src/utils/credential_vault.py` + `CONFIG_MASTER_KEY`（加密落盘 + 启动期 fail-fast）。
+  - 版本库上传安全：`.env.schema` + `varlock load` + `.githooks/pre-commit`（提交前阻断敏感信息误传）。
 - 第 9 步已完成并通过验证；下一步（第 10 步）应仅推进领域模型与校验规则定义，不提前进入账户/订单流程实现。
 - 第 11 步已完成并通过验证：
   - `src/core/account_service.py` 实现账户生命周期管理（初始化、查询、余额变更、持仓恢复、总资产估值）。

@@ -55,6 +55,20 @@ cp config/.env.example .env
 - 如果在 `.env` 中设置了 `EXCHANGE_API_KEY` / `EXCHANGE_API_SECRET`，必须同时设置 `CONFIG_MASTER_KEY`。
 - CLI 启动时会将凭证加密写入本地 Vault；缺少主密钥会直接失败（fail-fast）。
 
+5. （推荐）启用 Varlock 与提交前密钥检查
+
+```bash
+# 1) 校验本地环境变量（敏感值会自动脱敏）
+varlock load
+
+# 2) 启用仓库内 pre-commit 钩子（提交前自动执行密钥检查）
+git config core.hooksPath .githooks
+```
+
+说明：
+- `.env.schema` 定义了环境变量类型与敏感级别；
+- `scripts/check-secrets.sh` 会阻止提交 `.env`、`data/secure/`、数据库文件及疑似密钥文本。
+
 ## 第 41 步验收检查流程（下载 → 回测 → 实时模拟）
 
 以下命令均在仓库根目录执行。
