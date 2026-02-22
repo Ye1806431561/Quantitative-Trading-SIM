@@ -15,6 +15,7 @@ from src.cli_commands import (
     handle_status,
     handle_stop,
 )
+from src.cli_benchmark import handle_benchmark
 from src.cli_context import CLICommandError, build_context, console
 from src.cli_order_commands import handle_order_cancel, handle_order_list, handle_order_place
 from src.cli_workflows import (
@@ -133,6 +134,18 @@ def build_parser() -> argparse.ArgumentParser:
 
     reconcile_parser = subparsers.add_parser("reconcile", help="按成交重建持仓")
     reconcile_parser.set_defaults(handler=handle_reconcile)
+
+    benchmark_parser = subparsers.add_parser("benchmark", help="运行第40步性能基准")
+    benchmark_parser.add_argument("--symbol", default="BTC/USDT")
+    benchmark_parser.add_argument("--strategy", default="sma_strategy")
+    benchmark_parser.add_argument(
+        "--output-dir",
+        help="基准报告输出目录，默认 <system.data_dir>/benchmarks",
+    )
+    benchmark_parser.add_argument("--realtime-iterations", type=int, default=300)
+    benchmark_parser.add_argument("--order-iterations", type=int, default=500)
+    benchmark_parser.add_argument("--seed", type=int, default=42)
+    benchmark_parser.set_defaults(handler=handle_benchmark)
 
     return parser
 

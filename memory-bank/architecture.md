@@ -2,10 +2,10 @@
 
 ## 当前阶段定位（2026-02-22）
 
-- 仓库已完成 `implementation-plan.md` Phase 0 第 1-7 条，Phase 1 第 8-16 条，Phase 2 第 17-24 条，Phase 3 第 25-35 条，Phase 4 第 36-39 条代码落地（第 35-38 步均已通过用户验收，第 39 步待验收）。
-- 当前处于“第 39 步代码已完成待验收、第 40 步未开始”阶段。
+- 仓库已完成 `implementation-plan.md` Phase 0 第 1-7 条，Phase 1 第 8-16 条，Phase 2 第 17-24 条，Phase 3 第 25-35 条，Phase 4 第 36-40 条代码落地并通过用户验收（第 35-40 步已验收通过）。
+- 当前处于“第 40 步已验收通过、第 41 步未开始”阶段。
 - 第 39 步补充完成 warning 基线治理（SQLite 连接生命周期 + converter 迁移 + pytest warning-as-error），当前全量测试为 0 warnings。
-- 第 40 步尚未启动（遵循“第 39 步通过前不启动第 40 步”约束）。
+- 第 41 步尚未启动。
 - 最小交付范围仍锁定为 CLI + 模拟盘（回测与实时模拟），Web 能力保留为可选项且暂不交付。
 - **第 29 步实现与验证**：`src/live/realtime_loop.py` 实现完整的实时模拟主循环（行情拉取→策略执行→下单→撮合→持仓更新），全量测试 8 passed。实时模式的数据读取路径符合约束：先将最新行情落 SQLite，策略可从 SQLite 读取历史数据；CSV/Parquet 不参与运行态读写。
 
@@ -87,15 +87,26 @@
 - `src/analysis/performance_trade.py`：第 35 步交易统计构建模块，负责从成交明细计算次数、胜率、盈亏比等交易维度指标。
 - `src/analysis/performance_errors.py`：第 35 步性能分析异常定义模块，统一参数错误与输入校验错误语义。
 - `src/analysis/visualization.py`：第 36 步可视化导出模块，提供资金曲线、回撤曲线、交易盈亏分布、持仓时间分布四类图像导出能力。
-- `src/cli.py`：第 37-38 步 CLI 主入口与参数解析器，实现子命令路由、统一错误返回码，并新增 `status --alerts` 查询能力。
+- `src/cli.py`：第 37-40 步 CLI 主入口与参数解析器，实现子命令路由、统一错误返回码，并新增 `status --alerts` 与 `benchmark` 查询/基准能力。
 - `src/cli_context.py`：第 37-38 步 CLI 运行上下文装配，负责配置加载、数据库/服务构建、运行状态文件读写，以及监控状态/凭证加密状态查询。
 - `src/cli_commands.py`：第 37-38 步系统类命令处理器（`start/stop/status/balance/positions/cleanup/reconcile`），`status` 支持监控摘要与告警列表输出。
 - `src/cli_order_commands.py`：第 37 步订单类命令处理器（`order place/list/cancel`）。
 - `src/cli_workflows.py`：第 37-38 步工作流命令处理器（`backtest/download/live/import/export`），`live` 命令会同步维护 `runtime_state.json` 运行状态。
+- `src/cli_benchmark.py`：第 40 步性能基准命令处理器（`benchmark`），负责参数校验、基准执行、报告落盘与退出码策略。
+- `src/benchmarking/models.py`：第 40 步基准报告数据模型定义（条件、阈值、指标、评估、改进项）。
+- `src/benchmarking/scenarios.py`：第 40 步基准场景构造（1 年 1h 数据生成、fake market、silent strategy）。
+- `src/benchmarking/evaluation.py`：第 40 步阈值评估模块，提供 pass/warning/fail 分类与改进项生成。
+- `src/benchmarking/executors.py`：第 40 步执行模块，分离回测/实时/订单三类基准的落地执行逻辑。
+- `src/benchmarking/runner.py`：第 40 步基准执行编排（回测速度、实时延迟、订单响应）与分级阈值评估。
+- `src/benchmarking/reporter.py`：第 40 步报告导出模块，输出 JSON/Markdown 双格式报告。
 - `tests/test_performance_analysis.py`：第 35 步性能分析测试，覆盖收益/风险指标、周期参数校验、间隔一致性校验。
 - `tests/test_visualization.py`：第 36 步可视化测试，覆盖图片导出、空交易场景、回撤计算与输入校验异常。
 - `tests/test_cli_runtime.py`：第 37-38 步 CLI 运行态测试，覆盖系统状态、订单命令、`status --alerts`、reconcile 与参数缺失错误返回。
 - `tests/test_cli_workflows.py`：第 37 步 CLI 工作流测试，覆盖回测/下载/实时模拟/导入导出/清理及缺参错误返回。
+- `tests/test_benchmark_runner.py`：第 40 步基准评估逻辑测试，覆盖 pass/warning/fail 阈值与改进项生成。
+- `tests/test_cli_benchmark.py`：第 40 步基准 CLI 测试，覆盖报告产出、退出码与非法参数场景。
+- `tests/test_benchmark_executors.py`：第 40 步执行器回归测试，覆盖实时延迟采样口径、连接关闭路径与策略参数异常封装。
+- `tests/test_benchmark_reporter.py`：第 40 步报告导出回归测试，覆盖同秒重复执行时的文件防覆盖行为。
 - `src/live/loop_models.py`：实时循环数据模型定义。
 - `src/live/loop_signal_executor.py`：信号执行与通知处理处理器。
 - `src/live/monitor.py`：第 38 步运行监控模块，持久化 `monitor_state.json` 并记录策略状态、账户快照、告警与计数器。
@@ -185,6 +196,12 @@
 - 第 39 步新增覆盖率记录能力：引入 `pytest-cov` 并输出 `TOTAL` 覆盖率汇总，为第 40 步性能基准与后续回归提供质量基线。
 - 第 39 步验收加固：关键链路断言从“弱条件”升级为“精确业务口径”，并修复回测 trade log 在部分平仓场景下的 `size/exit_price` 记录失真问题（基于 `tradehistory` 成交历史重建开平仓价格）。
 - 第 39 步 warning 治理补充：`tests/test_database.py` 中 SQLite 连接改为显式关闭，`src/core/database.py` 切换为显式注册 SQLite 日期/时间 converter，结合 `pytest.ini` warning-as-error 规则实现“0 warning 基线”。
+- 第 40 步新增基准子系统：将回测速度、实时延迟、订单响应统一编排到 `src/benchmarking/runner.py`，并由 `quant-sim benchmark` 一键执行。
+- 第 40 步新增分级阈值策略：回测 `<5s` pass、`[5s,10s)` warning、`>=10s` fail；实时与订单分别以 `p95` 对应阈值判定 fail/pass。
+- 第 40 步新增可追溯报告：`src/benchmarking/reporter.py` 同步导出 JSON 与 Markdown，固定包含 `meta/conditions/backtest/realtime/order_response/thresholds/evaluation/improvement_items` 顶层结构。
+- 第 40 步新增 I/O 抑制约束：基准测量区间统一屏蔽 stdout/stderr 并临时禁用 loguru 发射，避免日志与控制台输出干扰时间测量。
+- 第 40 步验收补充修复：实时延迟采样改为“每轮迭代 start/end”口径；执行器失败路径连接关闭与策略参数异常封装补齐；报告同秒防覆盖与 `output-dir` 类型校验补齐。
+- 第 40 步最终状态：用户已验收通过，当前全量测试 `272 passed`。
 - 第 9 步已完成并通过验证；下一步（第 10 步）应仅推进领域模型与校验规则定义，不提前进入账户/订单流程实现。
 - 第 11 步已完成并通过验证：
   - `src/core/account_service.py` 实现账户生命周期管理（初始化、查询、余额变更、持仓恢复、总资产估值）。

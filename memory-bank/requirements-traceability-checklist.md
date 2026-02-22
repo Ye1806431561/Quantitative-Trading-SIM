@@ -1,9 +1,9 @@
-# 需求追踪清单（Phase 0-4 / Step 1-39）
+# 需求追踪清单（Phase 0-4 / Step 1-40）
 
 ## 说明
 - 来源文档：`memory-bank/product-requirement-document.md`
 - 目标：将需求逐项映射到模块与交付物，并标记范围（必选/可选）
-- 状态：已完成实施计划第 1-39 步代码与文档落地（第 34-38 步已验证通过，第 39 步代码完成待验证，含 warning 基线治理）；第 40 步未开始
+- 状态：已完成实施计划第 1-40 步代码与文档落地并通过验收（第 34-40 步已验证通过）；第 41 步未开始
 
 ## 最小可用范围（MVP）定义
 
@@ -67,11 +67,11 @@
 | FR-ANL-03 | 可视化报表（资金曲线/回撤/分布/持仓时间） | `src/analysis/visualization.py` | 图表输出模块 | 必选 | - |
 | FR-LOG-01 | 交易/策略/错误日志分级记录 | `src/utils/logger.py` | 日志初始化与分流（终端+文件+轮转+脱敏） | 必选 | - |
 | FR-LOG-02 | 实时监控（策略状态/资产变化/异常告警） | `src/live/monitor.py`, `src/cli.py`, `src/cli_commands.py` | 监控输出与查询接口 | 必选 | - |
-| FR-CLI-01 | CLI 命令入口与常用命令 | `src/cli.py`, `src/cli_context.py`, `src/cli_commands.py`, `src/cli_order_commands.py`, `src/cli_workflows.py`, `main.py` | CLI 子命令集合 | 必选 | - |
+| FR-CLI-01 | CLI 命令入口与常用命令 | `src/cli.py`, `src/cli_context.py`, `src/cli_commands.py`, `src/cli_order_commands.py`, `src/cli_workflows.py`, `src/cli_benchmark.py`, `main.py` | CLI 子命令集合 | 必选 | - |
 | FR-WEB-01 | Web 界面（可选） | `web/`（预留） | Web 服务与仪表盘 | 可选 | Phase 0-4 当前交付不含 Web，优先保证 CLI 与双引擎闭环 |
-| NFR-PERF-01 | 实时行情延迟 < 1 秒 | `src/data/market.py`, `src/live/simulator.py` | 性能基准脚本与报告 | 必选 | - |
-| NFR-PERF-02 | 订单处理响应 < 100ms | `src/core/matching.py` | 性能压测脚本与结果 | 必选 | - |
-| NFR-PERF-03 | 回测 1 年 1h 数据 < 10 秒（目标 <5 秒） | `src/backtest/engine.py` | 回测基准报告 | 必选 | - |
+| NFR-PERF-01 | 实时行情延迟 < 1 秒 | `src/benchmarking/runner.py`, `src/benchmarking/reporter.py`, `src/cli_benchmark.py` | 实时延迟基准与报告 | 必选 | - |
+| NFR-PERF-02 | 订单处理响应 < 100ms | `src/benchmarking/runner.py`, `src/core/matching.py`, `src/cli_benchmark.py` | 订单响应基准与报告 | 必选 | - |
+| NFR-PERF-03 | 回测 1 年 1h 数据 < 10 秒（目标 <5 秒） | `src/benchmarking/runner.py`, `src/backtest/engine.py`, `src/cli_benchmark.py` | 回测速度基准与报告 | 必选 | - |
 | NFR-PERF-04 | 支持 5+ 策略并行 | `src/live/simulator.py` | 并发运行验证 | 必选 | - |
 | NFR-REL-01 | 异常处理机制完善 | 全模块 | 统一错误处理规范 | 必选 | - |
 | NFR-REL-02 | 网络断线自动重连 | `src/data/market.py` | 重连策略与退避 | 必选 | - |
@@ -551,4 +551,38 @@
 - [x] warning 强约束验证通过：
   - `PYTHONPATH=. ./.venv/bin/pytest -q -m unit -W error::pytest.PytestUnraisableExceptionWarning`
     （247 passed, 4 deselected）
-- [ ] 用户验证（等待你执行第 39 步验收；通过前不启动第 40 步）。
+- [x] 用户验证通过（2026-02-22）。
+
+## 第40步验收检查（已通过）
+
+- [x] 已新增性能基准 CLI 命令：`quant-sim benchmark`（`src/cli.py` + `src/cli_benchmark.py`）。
+- [x] 已实现基准子系统：
+  - `src/benchmarking/models.py`
+  - `src/benchmarking/scenarios.py`
+  - `src/benchmarking/evaluation.py`
+  - `src/benchmarking/executors.py`
+  - `src/benchmarking/runner.py`
+  - `src/benchmarking/reporter.py`
+  - `src/benchmarking/__init__.py`
+- [x] 已覆盖三类指标并采用分级阈值策略：
+  - 回测速度：`<5s` pass，`[5s,10s)` warning，`>=10s` fail；
+  - 实时延迟：`p95 < 1000ms` pass；
+  - 订单响应：`p95 < 100ms` pass；
+  - 失败返回码 `1`，通过/告警返回码 `0`。
+- [x] 已落实固定测试条件并记录到报告：
+  - 1 年 1h K 线、单策略、默认分析器、单交易对、SQLite 本地；
+  - 基准测量区间启用 I/O 抑制（stdout/stderr + loguru）。
+- [x] 已新增自动化测试：
+  - `tests/test_benchmark_runner.py`（阈值与评估逻辑）
+  - `tests/test_cli_benchmark.py`（CLI 行为与报告产出）
+  - `tests/test_benchmark_executors.py`（执行器口径与异常路径）
+  - `tests/test_benchmark_reporter.py`（同秒报告文件防覆盖）
+- [x] 本地自检通过：
+  - `PYTHONPATH=. ./.venv/bin/pytest -q tests/test_benchmark_executors.py tests/test_benchmark_reporter.py tests/test_benchmark_runner.py tests/test_cli_benchmark.py`（21 passed）
+  - `PYTHONPATH=. ./.venv/bin/pytest -q`（272 passed）
+  - `PYTHONPATH=. ./.venv/bin/python main.py benchmark --seed 42`
+    - `backtest_seconds=0.718607`
+    - `realtime_p95_ms=0.725417`
+    - `order_p95_ms=0.928042`
+    - `evaluation=pass`
+- [x] 用户验证通过（2026-02-22）；第 41 步仍未启动。

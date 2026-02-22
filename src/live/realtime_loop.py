@@ -191,6 +191,11 @@ class RealtimeSimulationLoop:
             if self._config.max_iterations is not None and self._iteration_count >= self._config.max_iterations:
                 break
             self._iteration_count += 1
+            iteration_started_ns = time.perf_counter_ns()
+            self._notify_iteration_started(
+                iteration_count=self._iteration_count,
+                started_at_ns=iteration_started_ns,
+            )
 
             try:
                 # Step 1: Fetch latest market data
@@ -302,8 +307,27 @@ class RealtimeSimulationLoop:
                         category="loop_iteration",
                         message=f"iteration {self._iteration_count} failed: {exc}",
                     )
+            finally:
+                self._notify_iteration_finished(
+                    iteration_count=self._iteration_count,
+                    ended_at_ns=time.perf_counter_ns(),
+                )
 
             time.sleep(self._config.tick_interval_seconds)
+
+    def _notify_iteration_started(self, *, iteration_count: int, started_at_ns: int) -> None:
+        if self._monitor is None:
+            return
+        callback = getattr(self._monitor, "mark_iteration_started", None)
+        if callable(callback):
+            callback(iteration_count=iteration_count, started_at_ns=started_at_ns)
+
+    def _notify_iteration_finished(self, *, iteration_count: int, ended_at_ns: int) -> None:
+        if self._monitor is None:
+            return
+        callback = getattr(self._monitor, "mark_iteration_finished", None)
+        if callable(callback):
+            callback(iteration_count=iteration_count, ended_at_ns=ended_at_ns)
 
     def _persist_latest_candle(self, timestamp_ms: int, price: float) -> None:
         """Persist latest price as a candle to SQLite (runtime write path)."""
