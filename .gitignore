@@ -27,3 +27,4 @@ logs/*.zip
 data/database/*.db
 data/database/*.sqlite*
 data/monitor_state.json
+data/secure/
