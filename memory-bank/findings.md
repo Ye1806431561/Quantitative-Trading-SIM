@@ -25,9 +25,10 @@
 - 第 37 步已完成并通过用户验收（CLI 命令集合）。
 - 第 37 步已补充显式断言：`backtest --output-dir` 同时导出报告与 4 张图表。
 - 第 38 步已完成并通过用户验收（运行状态与监控输出、凭证加密存储、CLI 告警查询）。
-- 第 39 步已完成代码实现（单元/集成测试套件与覆盖率记录），等待用户验收。
+- 第 39 步已完成并通过用户验收（单元/集成测试套件与覆盖率记录）。
 - 第 39 步 warning 噪音治理已完成（P0/P1/P2），当前本地回归为 0 warnings。
-- 在第 39 步验收通过前，不启动第 40 步开发。
+- 第 40 步已完成并通过用户验收（性能基准：回测速度 + 实时延迟 + 订单响应）。
+- 第 41 步尚未开始。
 
 ## Research Findings
 <!-- 
@@ -178,6 +179,23 @@
   - 已在 `src/core/database.py` 中注册 SQLite 自定义日期/时间 adapter + converter，规避默认转换器弃用路径。
   - `pytest.ini` 已将 `DeprecationWarning`、`ResourceWarning`、`PytestUnraisableExceptionWarning` 统一提升为 error，防止 warning 回流。
   - 最新验证结果：`PYTHONPATH=. ./.venv/bin/pytest -q` → `251 passed`（0 warnings）。
+- **Step 40 实现发现（2026-02-22）**：
+  - 性能基准需要独立入口，避免夹杂在现有 `backtest/live` 命令路径中导致条件不可控；新增 `quant-sim benchmark` 更利于复现与验收。
+  - 回测/实时/订单三类基准应使用独立 SQLite 文件，避免共享状态污染和结果漂移。
+  - 延迟指标应统一使用 `p95` 作为阈值判定主口径，`mean/max` 仅用于诊断。
+  - 对“回测 5-10s”采用 warning 而非 fail，可对齐“硬目标 + 降级容忍”双层验收语义。
+  - 基准测量区间必须抑制 I/O（stdout/stderr/loguru），否则日志抖动会显著影响毫秒级指标稳定性。
+  - 报告格式需统一顶层字段（`meta/conditions/backtest/realtime/order_response/thresholds/evaluation/improvement_items`），保证追溯与自动化消费一致。
+  - 验收补充修复：
+    - 修复实时延迟采样口径：由“`get_latest_price` 调用间隔”改为“每轮迭代 start/end 耗时”，消除多次行情读取导致的 P95 失真。
+    - 修复执行器连接生命周期：三类基准执行器在初始化异常路径也会 `db.close()`，避免 SQLite 连接泄漏。
+    - 修复回测参数处理语义：移除执行器重复参数解析，统一由 `BacktestEngine` 负责解析。
+    - 修复报告同秒覆盖：同秒重复执行自动追加序号后缀，保留所有产物。
+    - 修复错误体验：策略参数异常与非法 `output-dir` 均转换为可解释 CLI 错误而非“未预期异常”。
+  - 第 40 步最终验证结果：
+    - `tests/test_benchmark_executors.py + tests/test_benchmark_reporter.py + tests/test_benchmark_runner.py + tests/test_cli_benchmark.py`：`21 passed`
+    - 全量回归：`272 passed`
+    - `main.py benchmark --seed 42 --realtime-iterations 5 --order-iterations 10`：`backtest_seconds=0.718607`、`realtime_p95_ms=0.725417`、`order_p95_ms=0.928042`、`evaluation=pass`
 
 ## Technical Decisions
 <!-- 
@@ -290,6 +308,10 @@
 | 将 `DeprecationWarning`/`ResourceWarning`/`PytestUnraisableExceptionWarning` 统一提升为 error | 把 warning 治理前置到测试入口，避免“看似通过但存在资源泄漏/弃用路径”的伪稳定状态 |
 | 集成测试由“弱断言”改为“业务结果精确断言” | 防止关键路径在断言过宽情况下出现“假通过”，提升回归检错能力 |
 | 交易日志开平仓价格改为由 `tradehistory` 成交历史重建 | 修复部分平仓场景下 `trade_log.size/exit_price` 记录失真问题 |
+| 新增 `quant-sim benchmark` 统一执行三类性能基准 | 固化测试条件与输出格式，减少人工拼接命令导致的基准口径漂移 |
+| 性能评估采用“回测分级 + 实时/订单硬阈值” | 同时满足硬目标（<5s）与降级容忍（<10s），并对实时交易链路保持严格门槛 |
+| 基准测量区间启用 I/O 抑制 | 降低 stdout/stderr/loguru 输出抖动对毫秒级指标的干扰，提升结果稳定性 |
+| 基准报告固定 JSON+Markdown 双产物 | 兼顾机器消费与人工审阅，便于追踪历史趋势和验收留档 |
 
 ## Issues Encountered
 <!-- 
@@ -337,6 +359,9 @@
 | 覆盖率命令 `--cov` 在环境中不可用 | 补充 `pytest-cov` 依赖并验证覆盖率命令可执行，记录 `TOTAL` 覆盖率输出 |
 | 集成测试存在“断言通过但业务结果错误”风险 | 补充账户均价、回测 PnL/净值、实时成交价与 K 线 OHLC 聚合断言，确保关键口径被验证 |
 | `with sqlite3.connect(...)` 在 Python 3.13 下不自动关闭连接 | 将测试中的 SQLite 连接改为显式 `close()`（`try/finally`），并将 `PytestUnraisableExceptionWarning` 提升为 error，杜绝未关闭连接回归 |
+| 性能基准易受日志/控制台输出噪音影响 | 在测量区间引入 `_suppress_io()`（stdout/stderr 重定向 + loguru 临时禁用）保证计时稳定 |
+| 回测/实时/订单共用数据库会造成状态污染 | 基准改为每项使用独立 SQLite 文件（backtest/realtime/order 各自隔离） |
+| 仅报告单一耗时不利于定位尾部抖动 | 实时与订单统一输出 `mean/p95/max`，并以 `p95` 作为阈值判定主口径 |
 
 ## Resources
 <!-- 
@@ -366,12 +391,23 @@
 - `src/cli_commands.py`
 - `src/cli_order_commands.py`
 - `src/cli_workflows.py`
+- `src/cli_benchmark.py`
+- `src/benchmarking/models.py`
+- `src/benchmarking/scenarios.py`
+- `src/benchmarking/evaluation.py`
+- `src/benchmarking/executors.py`
+- `src/benchmarking/runner.py`
+- `src/benchmarking/reporter.py`
 - `src/live/monitor.py`
 - `src/utils/credential_vault.py`
 - `tests/test_performance_analysis.py`
 - `tests/test_visualization.py`
 - `tests/test_cli_runtime.py`
 - `tests/test_cli_workflows.py`
+- `tests/test_cli_benchmark.py`
+- `tests/test_benchmark_runner.py`
+- `tests/test_benchmark_executors.py`
+- `tests/test_benchmark_reporter.py`
 - `tests/test_monitoring.py`
 - `tests/test_cli_context_credentials.py`
 - `tests/test_realtime_candle_bucketing.py`

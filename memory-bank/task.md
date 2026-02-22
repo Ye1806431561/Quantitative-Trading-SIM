@@ -47,7 +47,7 @@
 - [x] 36. Implement visualization output <!-- id: 35 -->
 - [x] 37. Implement CLI command set <!-- id: 36 -->
 - [x] 38. Implement operation status & monitoring <!-- id: 37 -->
-- [ ] 39. Establish unit & integration test suites（开发完成，待验收；含 warning 基线治理） <!-- id: 38 -->
-- [ ] 40. Perform performance benchmarking <!-- id: 39 -->
+- [x] 39. Establish unit & integration test suites（已验收通过；含 warning 基线治理） <!-- id: 38 -->
+- [x] 40. Perform performance benchmarking（已验收通过） <!-- id: 39 -->
 - [ ] 41. Update README & documentation <!-- id: 40 -->
 - [ ] 42. Final regression check <!-- id: 41 -->
