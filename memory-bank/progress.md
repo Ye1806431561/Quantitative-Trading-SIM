@@ -7,10 +7,11 @@
 - 第 36 步已验收通过（含 `datetime` 时间戳兼容修复与回归测试补齐）。
 - 第 37 步已验收通过（CLI 命令集合）。
 - 第 38 步已验收通过（运行状态与监控输出）。
-- 第 39 步未开始。
+- 第 39 步代码已完成（单元/集成测试套件 + 覆盖率记录 + warning 基线治理），等待你执行验收验证。
+- 第 40 步未开始（按约束等待第 39 步验证通过）。
 
 ## 未解决问题清单
-- 暂无。
+- 第 39 步待你验证通过。
 
 ## 历史归档
 - [2026-02-15](progress_archive/2026-02-15.md)
@@ -21,6 +22,53 @@
 - [2026-02-20](progress_archive/2026-02-20.md)
 
 ## 最近的关键变更
+
+## 2026-02-21（第 39 步）
+
+### 本次目标
+- 执行 `implementation-plan.md` Phase 4 第 39 条：建立单元与集成测试套件，覆盖账户、撮合、策略、回测、实时引擎关键路径，并产出覆盖率记录。
+
+### 已完成事项
+- 建立测试套件分层配置：
+  - 新增 `pytest.ini`，注册 `unit` 与 `integration` 两类 marker，并统一 `testpaths/tests`。
+  - 新增 `tests/conftest.py`，默认将未显式标记的测试归类为 `unit`，形成稳定的双套件运行方式。
+- 新增关键路径集成测试：
+  - 新增 `tests/test_integration_key_paths.py`（`@pytest.mark.integration`），覆盖三条端到端关键链路：
+    - 账户 + 撮合：市价买入后账户、持仓、订单、成交一致性；
+    - 策略 + 回测：Backtest 引擎执行策略并产出分析结果；
+    - 实时引擎：实时循环驱动策略下单、撮合、K线落库。
+- 集成测试断言补强与结果口径修复：
+  - 账户/撮合链路补充 `positions.entry_price` 精确断言；
+  - 回测链路补充 `pnl/final_value` 与 `trade_log` 入场价/出场价断言；
+  - 回测链路新增“部分平仓”集成用例，验证 `trade_log` 在多次平仓场景下的 `size/entry_price/exit_price/pnl` 一致性；
+  - 实时链路补充成交价断言与 K 线 OHLC 聚合断言（验证 `ON CONFLICT` 合并语义，不仅验证行数）；
+  - 修复 `BacktestEngine` 交易记录封装：启用 `tradehistory` 并按成交历史重建开/平仓 VWAP，避免部分平仓时 `trade_log.size/exit_price` 失真。
+- 增强覆盖率工具链：
+  - `requirements.txt` 新增 `pytest-cov`，用于统一覆盖率采集命令。
+- 形成标准化验证命令：
+  - `PYTHONPATH=. ./.venv/bin/pytest -q -m integration`
+  - `PYTHONPATH=. ./.venv/bin/pytest -q -m unit`
+  - `PYTHONPATH=. ./.venv/bin/pytest -q --cov=src --cov-report=term --cov-report=xml:coverage.xml`
+
+### 第 39 步补充修复（2026-02-22，warning 噪音治理）
+- 完成 `P0 -> P1 -> P2` 顺序治理，目标是将 warning 从“可见噪音”升级为“硬失败”并清除基线问题：
+  - `P0`：`.gitignore` 增加 `coverage.xml`，覆盖率产物不再污染 git 工作区。
+  - `P1`：修复 `tests/test_database.py` 中 SQLite 连接生命周期问题（显式 `close()`），消除 Python 3.13 下 `ResourceWarning: unclosed database` 与其衍生的 `PytestUnraisableExceptionWarning`。
+  - `P1`：`src/core/database.py` 增加 SQLite 自定义日期/时间 adapter + converter 注册逻辑，避免依赖已弃用的默认转换器路径。
+  - `P2`：`pytest.ini` 增加 `error::pytest.PytestUnraisableExceptionWarning`，并保留 `error::DeprecationWarning`、`error::ResourceWarning`，将 warning 治理前置到 CI/本地测试入口。
+
+### 测试结果
+- `integration` 套件：`4 passed, 247 deselected`。
+- `unit` 套件：`247 passed, 4 deselected`。
+- 全量测试：`251 passed`（0 warnings）。
+- 覆盖率汇总：`TOTAL 88%`（`4670` statements, `570` missed）。
+- warning 强约束回归：
+  - `PYTHONPATH=. ./.venv/bin/pytest -q -m unit -W error::pytest.PytestUnraisableExceptionWarning` → `247 passed, 4 deselected`。
+
+### 验收状态
+- Phase 4 第 39 步代码实现已完成，自动化测试通过并生成覆盖率记录。
+- 等待你执行并确认验收通过。
+- 第 40 步未开始（遵循“第 39 步通过前不启动第 40 步”约束）。
 
 ## 2026-02-21（第 38 步）
 

@@ -21,5 +21,6 @@ matplotlib
 
 # Development tools (optional)
 pytest
+pytest-cov
 pytest-asyncio
 black

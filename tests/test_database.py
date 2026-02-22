@@ -109,8 +109,11 @@ def test_open_commit_and_close_lifecycle(tmp_path) -> None:
     database.close()
     assert not database.is_open
 
-    with sqlite3.connect(db_path) as verify_conn:
+    verify_conn = sqlite3.connect(db_path)
+    try:
         row_count = verify_conn.execute("SELECT COUNT(*) FROM lifecycle;").fetchone()[0]
+    finally:
+        verify_conn.close()
     assert row_count == 1
 
 

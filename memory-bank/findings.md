@@ -25,7 +25,9 @@
 - 第 37 步已完成并通过用户验收（CLI 命令集合）。
 - 第 37 步已补充显式断言：`backtest --output-dir` 同时导出报告与 4 张图表。
 - 第 38 步已完成并通过用户验收（运行状态与监控输出、凭证加密存储、CLI 告警查询）。
-- 第 39 步尚未启动。
+- 第 39 步已完成代码实现（单元/集成测试套件与覆盖率记录），等待用户验收。
+- 第 39 步 warning 噪音治理已完成（P0/P1/P2），当前本地回归为 0 warnings。
+- 在第 39 步验收通过前，不启动第 40 步开发。
 
 ## Research Findings
 <!-- 
@@ -161,6 +163,21 @@
   - 补充修复：当配置不含明文凭证但 Vault 文件存在时，`build_context()` 必须在启动阶段要求 `CONFIG_MASTER_KEY` 并完成解密回填，避免运行时才出现鉴权失败。
   - 补充修复：实时 K 线落库需按 `timeframe` 分箱，并在同桶内合并 OHLC；若按 tick 毫秒直写会破坏 UNIQUE 去重并导致数据库膨胀。
   - 第 38 步补充修复后本地验证结果：`PYTHONPATH=. ./.venv/bin/pytest -q` 为 `247 passed, 54 warnings`。
+- **Step 39 实现发现（2026-02-21）**：
+  - 需要显式区分 `unit` 与 `integration` 套件入口，否则“全量通过”不等于“关键链路集成通过”。
+  - 仅靠现有分散测试文件难以直接证明账户/撮合/策略/回测/实时引擎的联调路径，需要新增专门的关键路径集成测试模块。
+  - 覆盖率记录依赖 `pytest-cov` 插件；缺失插件时 `--cov` 参数不可用，需补充开发依赖以保证覆盖率基线可复现。
+  - 集成测试补强后暴露回测 trade log 记录缺陷：部分平仓场景下，关闭交易时 `trade.size` 为 0 会导致 `size/exit_price` 记录失真；已修复为启用 `tradehistory` 并按成交历史计算开/平仓 VWAP。
+  - 第 39 步本地验证结果：
+    - `-m integration`：`4 passed`
+    - `-m unit`：`247 passed`
+    - 全量 + 覆盖率：`251 passed`，`TOTAL 88%`。
+- **Step 39 warning 治理补充（2026-02-22）**：
+  - Python 3.13 下 `sqlite3.Connection` 若未显式关闭会触发 `ResourceWarning`，并在 pytest 中折叠为 `PytestUnraisableExceptionWarning`；`with sqlite3.connect(...)` 仅管理事务，不自动关闭连接。
+  - 已修复 `tests/test_database.py` 的连接生命周期，改为显式 `close()`；关联 warning 已清零。
+  - 已在 `src/core/database.py` 中注册 SQLite 自定义日期/时间 adapter + converter，规避默认转换器弃用路径。
+  - `pytest.ini` 已将 `DeprecationWarning`、`ResourceWarning`、`PytestUnraisableExceptionWarning` 统一提升为 error，防止 warning 回流。
+  - 最新验证结果：`PYTHONPATH=. ./.venv/bin/pytest -q` → `251 passed`（0 warnings）。
 
 ## Technical Decisions
 <!-- 
@@ -267,6 +284,12 @@
 | CLI `status` 增加监控与凭证加密态摘要 | 单命令查看运行状态、告警数量与 `credentials_encrypted`，降低排障成本 |
 | Vault 存在时在启动阶段强制主密钥与解密回填 | 避免“配置无明文凭证但运行时才鉴权失败”的延迟故障，启动即暴露配置问题 |
 | 实时 K 线采用“timeframe 分箱 + ON CONFLICT 聚合 OHLC” | 保持 `candles` 唯一键稳定命中，防止 tick 级写入导致数据库行数爆炸 |
+| 通过 `pytest.ini` + `conftest.py` 建立 unit/integration 双套件 | 将测试执行语义标准化，支持按套件快速回归与故障定位 |
+| 新增 `test_integration_key_paths.py` 专项联调用例 | 用最小但完整的端到端路径证明账户/撮合/策略/回测/实时引擎关键链路可用 |
+| 引入 `pytest-cov` 作为开发依赖 | 产出可复现的覆盖率记录，满足第 39 步验收要求中的覆盖率基线追踪 |
+| 将 `DeprecationWarning`/`ResourceWarning`/`PytestUnraisableExceptionWarning` 统一提升为 error | 把 warning 治理前置到测试入口，避免“看似通过但存在资源泄漏/弃用路径”的伪稳定状态 |
+| 集成测试由“弱断言”改为“业务结果精确断言” | 防止关键路径在断言过宽情况下出现“假通过”，提升回归检错能力 |
+| 交易日志开平仓价格改为由 `tradehistory` 成交历史重建 | 修复部分平仓场景下 `trade_log.size/exit_price` 记录失真问题 |
 
 ## Issues Encountered
 <!-- 
@@ -289,7 +312,7 @@
 | 部分成交后取消订单的资金处理不清晰 | 明确资金管理逻辑：部分成交时消耗冻结资金（从 frozen 和 balance 同时扣除），取消时只释放剩余冻结资金 |
 | 本地缺少 pytest 可执行文件 | 代码实现后无法直接运行测试，需先安装依赖再由用户执行 pytest |
 | 市场数据模块初稿单文件超过 300 行 | 按 CLAUDE 约束拆分为 `market.py`、`market_policy.py`、`market_retry.py`，保持职责单一 |
-| SQLite `PARSE_DECLTYPES` 触发 `DeprecationWarning` | 当前不影响功能；后续可统一替换 timestamp converter（与第 15 步实现无功能耦合） |
+| SQLite `PARSE_DECLTYPES` 触发 `DeprecationWarning` | 在 `src/core/database.py` 显式注册日期/时间 adapter + converter，避免依赖默认弃用转换器；并通过 `pytest.ini` 将 `DeprecationWarning` 提升为 error 防回退 |
 | 第 17 步新增实时模块超过 300 行 | 拆分为 `src/data/realtime_market.py` 与 `src/data/realtime_payloads.py`，通过约束复核 |
 | 在 `positions.opened_at (TIMESTAMP)` 写入毫秒整数触发 SQLite converter 异常 | 改为使用 `CURRENT_TIMESTAMP` 写入，避免 `PARSE_DECLTYPES` 解析失败 |
 | 第 20 步初稿单文件超过 300 行 | 按 CLAUDE 约束拆分为 `src/core/limit_matching.py` 与 `src/core/limit_settlement.py` |
@@ -310,6 +333,10 @@
 | 实时循环内部异常此前仅日志输出，CLI 难以追踪 | 新增 `RuntimeMonitor` 告警通道，按类别记录网络/估值/策略/执行异常并提供 `status --alerts` 查询 |
 | 配置无明文凭证但 Vault 已存在时可能静默丢失交易凭证 | 新增启动期 fail-fast（缺主密钥即拒绝启动）并在成功解密后回填到运行态配置 |
 | 实时行情按毫秒戳直写 `candles` 会造成伪 K 线爆炸 | 改为按周期分箱并对同桶执行 OHLC 聚合更新，确保写入口径与 K 线语义一致 |
+| 缺少测试套件分层导致“全量通过”难映射到关键链路健康度 | 增加 `unit/integration` marker 与默认打标钩子，固定两套执行入口 |
+| 覆盖率命令 `--cov` 在环境中不可用 | 补充 `pytest-cov` 依赖并验证覆盖率命令可执行，记录 `TOTAL` 覆盖率输出 |
+| 集成测试存在“断言通过但业务结果错误”风险 | 补充账户均价、回测 PnL/净值、实时成交价与 K 线 OHLC 聚合断言，确保关键口径被验证 |
+| `with sqlite3.connect(...)` 在 Python 3.13 下不自动关闭连接 | 将测试中的 SQLite 连接改为显式 `close()`（`try/finally`），并将 `PytestUnraisableExceptionWarning` 提升为 error，杜绝未关闭连接回归 |
 
 ## Resources
 <!-- 
@@ -321,6 +348,7 @@
     - Project structure: src/main.py, src/utils.py
 -->
 <!-- URLs, file paths, API references -->
+- Python sqlite3 文档（Connection 上下文管理器/ResourceWarning）：https://docs.python.org/3.13/library/sqlite3.html
 - `memory-bank/CLAUDE.md`
 - `memory-bank/product-requirement-document.md`
 - `memory-bank/implementation-plan.md`
@@ -347,8 +375,12 @@
 - `tests/test_monitoring.py`
 - `tests/test_cli_context_credentials.py`
 - `tests/test_realtime_candle_bucketing.py`
+- `tests/test_integration_key_paths.py`
+- `tests/conftest.py`
+- `pytest.ini`
 - `config/config.yaml`
 - `config/.env.example`
+- `requirements.txt`
 - `src/utils/config_defaults.py`
 - `src/utils/config_validation.py`
 - `tests/test_config.py`

@@ -1,10 +1,11 @@
 # Architecture Notes
 
-## 当前阶段定位（2026-02-21）
+## 当前阶段定位（2026-02-22）
 
-- 仓库已完成 `implementation-plan.md` Phase 0 第 1-7 条，Phase 1 第 8-16 条，Phase 2 第 17-24 条，Phase 3 第 25-35 条，Phase 4 第 36-38 条代码落地（第 35-38 步均已通过用户验收）。
-- 当前处于“第 38 步已验收通过、第 39 步未开始”阶段。
-- 第 39 步尚未启动。
+- 仓库已完成 `implementation-plan.md` Phase 0 第 1-7 条，Phase 1 第 8-16 条，Phase 2 第 17-24 条，Phase 3 第 25-35 条，Phase 4 第 36-39 条代码落地（第 35-38 步均已通过用户验收，第 39 步待验收）。
+- 当前处于“第 39 步代码已完成待验收、第 40 步未开始”阶段。
+- 第 39 步补充完成 warning 基线治理（SQLite 连接生命周期 + converter 迁移 + pytest warning-as-error），当前全量测试为 0 warnings。
+- 第 40 步尚未启动（遵循“第 39 步通过前不启动第 40 步”约束）。
 - 最小交付范围仍锁定为 CLI + 模拟盘（回测与实时模拟），Web 能力保留为可选项且暂不交付。
 - **第 29 步实现与验证**：`src/live/realtime_loop.py` 实现完整的实时模拟主循环（行情拉取→策略执行→下单→撮合→持仓更新），全量测试 8 passed。实时模式的数据读取路径符合约束：先将最新行情落 SQLite，策略可从 SQLite 读取历史数据；CSV/Parquet 不参与运行态读写。
 
@@ -142,7 +143,10 @@
 - `tests/test_monitoring.py`：第 38 步监控与安全测试，覆盖监控状态查询、告警输出、凭证加密落盘、日志脱敏、网络重试恢复与策略崩溃隔离。
 - `tests/test_cli_context_credentials.py`：第 38 步凭证加载硬化测试，覆盖 Vault 缺主密钥 fail-fast 与解密回填运行态凭证。
 - `tests/test_realtime_candle_bucketing.py`：第 38 步实时 K 线写入口径测试，覆盖按周期分箱与同桶 OHLC 聚合。
-- `tests/*.py`（其余）：测试模块占位，用于承接 Phase 4 第 39 条。
+- `tests/conftest.py`：第 39 步测试分层钩子，默认将未显式标记测试归入 `unit` 套件。
+- `tests/test_integration_key_paths.py`：第 39 步关键路径集成测试，覆盖账户/撮合、策略/回测、实时引擎链路。
+- `pytest.ini`：第 39 步 pytest 套件配置，注册 `unit/integration` marker、统一测试发现路径，并将 `DeprecationWarning`/`ResourceWarning`/`PytestUnraisableExceptionWarning` 提升为 error。
+- `tests/*.py`（其余）：测试模块占位，用于承接 Phase 4 第 40 条及后续。
 - `requirements.txt`：当前仓库依赖清单入口（安装/CI 统一来源）；后续若恢复严格锁定版本，应与 Phase 0 第 4 条验收口径保持一致。
 - `README.md`：补充第 7 步日志方案说明与手工演练步骤，作为日志策略落地说明文档。
 - `main.py`：程序入口，调用 `src/cli.py` 执行命令分发。
@@ -176,6 +180,11 @@
 - 第 38 步新增凭证安全基线：当配置含 API 凭证时，必须提供 `CONFIG_MASTER_KEY`，并将凭证加密落盘到 `system.data_dir/secure/exchange_credentials.enc.json`，CLI 状态页展示 `credentials_encrypted`。
 - 第 38 步补充硬化：当 Vault 存在且配置无明文凭证时，启动阶段必须提供 `CONFIG_MASTER_KEY` 并完成解密回填，否则 fail-fast 终止，避免运行时鉴权延迟失败。
 - 第 38 步补充硬化：实时 `candles` 写入改为“按 timeframe 分箱 + ON CONFLICT 聚合 OHLC”，避免 tick 级毫秒戳写入导致数据库膨胀。
+- 第 39 步建立测试分层：通过 `pytest.ini` + `tests/conftest.py` 形成 `unit` 与 `integration` 双套件入口，支持按 marker 独立执行。
+- 第 39 步新增关键路径集成用例：`tests/test_integration_key_paths.py` 将账户、撮合、策略、回测、实时引擎串联为可复现的端到端断言。
+- 第 39 步新增覆盖率记录能力：引入 `pytest-cov` 并输出 `TOTAL` 覆盖率汇总，为第 40 步性能基准与后续回归提供质量基线。
+- 第 39 步验收加固：关键链路断言从“弱条件”升级为“精确业务口径”，并修复回测 trade log 在部分平仓场景下的 `size/exit_price` 记录失真问题（基于 `tradehistory` 成交历史重建开平仓价格）。
+- 第 39 步 warning 治理补充：`tests/test_database.py` 中 SQLite 连接改为显式关闭，`src/core/database.py` 切换为显式注册 SQLite 日期/时间 converter，结合 `pytest.ini` warning-as-error 规则实现“0 warning 基线”。
 - 第 9 步已完成并通过验证；下一步（第 10 步）应仅推进领域模型与校验规则定义，不提前进入账户/订单流程实现。
 - 第 11 步已完成并通过验证：
   - `src/core/account_service.py` 实现账户生命周期管理（初始化、查询、余额变更、持仓恢复、总资产估值）。

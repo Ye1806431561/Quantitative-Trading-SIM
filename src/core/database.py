@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import datetime as dt
 import sqlite3
 from collections.abc import Generator, Mapping
 from contextlib import contextmanager
@@ -113,6 +114,38 @@ INDEX_STATEMENTS: tuple[str, ...] = (
     "CREATE INDEX IF NOT EXISTS idx_trades_order_id ON trades(order_id);",
 )
 
+_SQLITE_DATE_CONVERTERS_REGISTERED = False
+
+
+def _adapt_date_iso(value: dt.date) -> str:
+    return value.isoformat()
+
+
+def _adapt_datetime_iso(value: dt.datetime) -> str:
+    return value.isoformat(sep=" ")
+
+
+def _convert_date_iso(raw: bytes) -> dt.date:
+    return dt.date.fromisoformat(raw.decode())
+
+
+def _convert_timestamp_iso(raw: bytes) -> dt.datetime:
+    text = raw.decode()
+    if text.endswith("Z"):
+        text = f"{text[:-1]}+00:00"
+    return dt.datetime.fromisoformat(text)
+
+
+def _register_sqlite_datetime_converters() -> None:
+    global _SQLITE_DATE_CONVERTERS_REGISTERED
+    if _SQLITE_DATE_CONVERTERS_REGISTERED:
+        return
+    sqlite3.register_adapter(dt.date, _adapt_date_iso)
+    sqlite3.register_adapter(dt.datetime, _adapt_datetime_iso)
+    sqlite3.register_converter("date", _convert_date_iso)
+    sqlite3.register_converter("timestamp", _convert_timestamp_iso)
+    _SQLITE_DATE_CONVERTERS_REGISTERED = True
+
 
 class DatabaseLifecycleError(RuntimeError):
     """Raised when database lifecycle operations are invalid."""
@@ -169,6 +202,7 @@ class SQLiteDatabase:
         if self._connection is not None:
             return self._connection
 
+        _register_sqlite_datetime_converters()
         self._database_path.parent.mkdir(parents=True, exist_ok=True)
         connection = sqlite3.connect(
             self._database_path,
@@ -235,3 +269,10 @@ class SQLiteDatabase:
 
     def __exit__(self, exc_type, exc, traceback) -> None:
         self.close()
+
+    def __del__(self) -> None:
+        try:
+            self.close()
+        except Exception:
+            # Destructor must never raise.
+            pass

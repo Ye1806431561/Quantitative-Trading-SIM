@@ -1,9 +1,9 @@
-# 需求追踪清单（Phase 0-4 / Step 1-38）
+# 需求追踪清单（Phase 0-4 / Step 1-39）
 
 ## 说明
 - 来源文档：`memory-bank/product-requirement-document.md`
 - 目标：将需求逐项映射到模块与交付物，并标记范围（必选/可选）
-- 状态：已完成实施计划第 1-38 步代码与文档落地（第 34-38 步已验证通过）；第 39 步未开始
+- 状态：已完成实施计划第 1-39 步代码与文档落地（第 34-38 步已验证通过，第 39 步代码完成待验证，含 warning 基线治理）；第 40 步未开始
 
 ## 最小可用范围（MVP）定义
 
@@ -525,3 +525,30 @@
 - [x] 本地自检通过：
   - `PYTHONPATH=. ./.venv/bin/pytest -q`（247 passed, 54 warnings）
 - [x] 用户验证通过（2026-02-21）。
+
+## 第39步验收检查（待验证）
+
+- [x] 已建立单元与集成测试套件分层：
+  - 新增 `pytest.ini`，注册 `unit`、`integration` marker；
+  - 新增 `tests/conftest.py`，默认将未显式标记用例归入 `unit` 套件。
+- [x] 已新增关键路径集成测试 `tests/test_integration_key_paths.py`，覆盖：
+  - 账户 + 撮合（市价单成交后账户/持仓/订单/成交一致性）；
+  - 策略 + 回测（BacktestEngine 执行策略并产出分析结果，含部分平仓 trade log 口径）；
+  - 实时引擎（RealtimeSimulationLoop 驱动策略执行、下单、撮合、K线落库）。
+- [x] 已补充覆盖率记录能力：
+  - `requirements.txt` 新增 `pytest-cov`；
+  - 覆盖率命令可执行并输出 `TOTAL` 汇总记录。
+- [x] 套件自检通过：
+  - `PYTHONPATH=. ./.venv/bin/pytest -q -m integration`（4 passed, 247 deselected）
+  - `PYTHONPATH=. ./.venv/bin/pytest -q -m unit`（247 passed, 4 deselected）
+  - `PYTHONPATH=. ./.venv/bin/pytest -q --cov=src --cov-report=term --cov-report=xml:coverage.xml`
+    （251 passed, TOTAL 88%）
+- [x] warning 治理已落地（按 P0/P1/P2 顺序）：
+  - `.gitignore` 已忽略 `coverage.xml`，覆盖率产物不再进入工作区噪音；
+  - `tests/test_database.py` 已修复 SQLite 连接未显式关闭导致的 `ResourceWarning`；
+  - `src/core/database.py` 已切换为显式注册 SQLite 日期/时间 adapter + converter；
+  - `pytest.ini` 已启用 `error::DeprecationWarning`、`error::ResourceWarning`、`error::pytest.PytestUnraisableExceptionWarning`。
+- [x] warning 强约束验证通过：
+  - `PYTHONPATH=. ./.venv/bin/pytest -q -m unit -W error::pytest.PytestUnraisableExceptionWarning`
+    （247 passed, 4 deselected）
+- [ ] 用户验证（等待你执行第 39 步验收；通过前不启动第 40 步）。
