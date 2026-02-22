@@ -616,3 +616,22 @@
 - [x] 已完成全量自动化回归：`PYTHONPATH=. ./.venv/bin/pytest -q`（272 passed, 0 failed）。
 - [x] 已完成 CLI 关键命令口径回归：`main.py --help`、`status --help`、`benchmark --help` 参数与文档一致。
 - [x] 用户验证通过（2026-02-22）。
+
+## 后续修复记录（2026-02-22，主网15m样本窗口）
+
+- [x] 关联需求：
+  - `FR-MKT-04` 历史 K 线下载与存储；
+  - `FR-CLI-01` CLI 可解释输出；
+  - `NFR-REL-01` 异常/告警可观测性。
+- [x] 新增主网配置模板：`config/config.mainnet.yaml`（保留默认 `config/config.yaml` 为 testnet 基线）。
+- [x] 下载结果新增覆盖率指标字段：
+  - `stored_count`、`expected_count`、`coverage_ratio`、`first_timestamp`、`last_timestamp`、`span_days`。
+- [x] CLI 增强：
+  - `download` 输出覆盖率统计并在 `<90%` 时告警；
+  - `backtest` 在样本覆盖率 `<90%` 时输出可解释提示。
+- [x] 已补充测试：
+  - `tests/test_storage.py`（统计字段与边界）；
+  - `tests/test_cli_workflows.py`（download/backtest 告警与非告警场景）。
+- [x] 本地回归验证：
+  - `PYTHONPATH=. ./.venv/bin/pytest -q tests/test_storage.py tests/test_cli_workflows.py`（23 passed）；
+  - `PYTHONPATH=. ./.venv/bin/pytest -q`（277 passed）。

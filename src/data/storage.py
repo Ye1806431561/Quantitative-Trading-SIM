@@ -2,16 +2,17 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
 from typing import Any, Protocol
 
 from src.core.candle import Candle
 from src.core.database import SQLiteDatabase
+from src.data.candle_window_stats import fetch_candle_window_stats
+from src.data.storage_types import (
+    CandleDownloadRequest,
+    CandleDownloadResult,
+    HistoricalDataStorageError,
+)
 from src.utils.config_defaults import ALLOWED_TIMEFRAMES
-
-
-class HistoricalDataStorageError(RuntimeError):
-    """Raised when historical candle download or persistence fails."""
 
 
 class CandleFetcher(Protocol):
@@ -27,39 +28,13 @@ class CandleFetcher(Protocol):
         ...
 
 
-@dataclass(frozen=True)
-class CandleDownloadRequest:
-    """Request payload for downloading a historical candle range."""
-
-    symbol: str
-    timeframe: str
-    start_timestamp: int
-    end_timestamp: int
-    batch_size: int = 500
-
-
-@dataclass(frozen=True)
-class CandleDownloadResult:
-    """Summary returned after a successful download and persistence run."""
-
-    symbol: str
-    timeframe: str
-    dataset_name: str
-    start_timestamp: int
-    end_timestamp: int
-    downloaded_count: int
-
-
 class HistoricalCandleStorage:
-    """Download historical candles and store/query them from SQLite candles table."""
-
     def __init__(self, database: SQLiteDatabase, fetcher: CandleFetcher) -> None:
         self._database = database
         self._fetcher = fetcher
         self._request_cache: set[tuple[str, str, int, int]] = set()
 
     def download_and_store(self, request: CandleDownloadRequest) -> CandleDownloadResult:
-        """Download candles for a time range and persist them to SQLite."""
         symbol = self._validate_symbol(request.symbol)
         timeframe = self._validate_timeframe(request.timeframe)
         start_timestamp, end_timestamp = self._validate_time_range(
@@ -70,10 +45,9 @@ class HistoricalCandleStorage:
         cache_key = (symbol, timeframe, start_timestamp, end_timestamp)
 
         if self._is_range_cached(cache_key):
-            return CandleDownloadResult(
+            return self._build_download_result(
                 symbol=symbol,
                 timeframe=timeframe,
-                dataset_name=self.build_dataset_name(symbol, timeframe),
                 start_timestamp=start_timestamp,
                 end_timestamp=end_timestamp,
                 downloaded_count=0,
@@ -111,6 +85,30 @@ class HistoricalCandleStorage:
                 break
 
         self._record_cached_range(cache_key)
+        return self._build_download_result(
+            symbol=symbol,
+            timeframe=timeframe,
+            start_timestamp=start_timestamp,
+            end_timestamp=end_timestamp,
+            downloaded_count=downloaded_count,
+        )
+
+    def _build_download_result(
+        self,
+        *,
+        symbol: str,
+        timeframe: str,
+        start_timestamp: int,
+        end_timestamp: int,
+        downloaded_count: int,
+    ) -> CandleDownloadResult:
+        stats = fetch_candle_window_stats(
+            database=self._database,
+            symbol=symbol,
+            timeframe=timeframe,
+            start_timestamp=start_timestamp,
+            end_timestamp=end_timestamp,
+        )
         return CandleDownloadResult(
             symbol=symbol,
             timeframe=timeframe,
@@ -118,6 +116,12 @@ class HistoricalCandleStorage:
             start_timestamp=start_timestamp,
             end_timestamp=end_timestamp,
             downloaded_count=downloaded_count,
+            stored_count=stats.stored_count,
+            expected_count=stats.expected_count,
+            coverage_ratio=stats.coverage_ratio,
+            first_timestamp=stats.first_timestamp,
+            last_timestamp=stats.last_timestamp,
+            span_days=stats.span_days,
         )
 
     def query_candles(
@@ -128,7 +132,6 @@ class HistoricalCandleStorage:
         end_timestamp: int | None = None,
         limit: int | None = None,
     ) -> list[Candle]:
-        """Query candles by symbol/timeframe/time-range in chronological order."""
         normalized_symbol = self._validate_symbol(symbol)
         normalized_timeframe = self._validate_timeframe(timeframe)
         if start_timestamp is not None and start_timestamp < 0:
@@ -167,7 +170,6 @@ class HistoricalCandleStorage:
 
     @staticmethod
     def build_dataset_name(symbol: str, timeframe: str) -> str:
-        """Return normalized dataset key like BTC_USDT_1h."""
         normalized_symbol = symbol.strip().upper().replace("/", "_").replace("-", "_")
         normalized_symbol = "_".join(part for part in normalized_symbol.split("_") if part)
         return f"{normalized_symbol}_{timeframe.strip()}"

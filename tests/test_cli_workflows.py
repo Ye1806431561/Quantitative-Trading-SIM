@@ -208,6 +208,76 @@ def test_download_command(cli_files: dict[str, Path], monkeypatch: pytest.Monkey
     ) == 0
 
 
+def test_download_command_warns_when_coverage_low(
+    cli_files: dict[str, Path],
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    class _SparseFetcher:
+        def __init__(self) -> None:
+            self._called = False
+
+        def fetch_ohlcv(self, symbol: str, timeframe: str, since: int | None = None, limit: int | None = None):
+            if self._called:
+                return []
+            self._called = True
+            return [[1_700_100_000_000, 10.0, 11.0, 9.0, 10.5, 20.0]]
+
+    monkeypatch.setattr("src.cli_workflows.MarketDataFetcher.from_config", lambda _config: _SparseFetcher())
+
+    assert _run_cli(
+        cli_files,
+        "download",
+        "--symbol",
+        "BTC/USDT",
+        "--timeframe",
+        "1m",
+        "--start-ms",
+        "1700100000000",
+        "--end-ms",
+        "1700103600000",
+    ) == 0
+
+    captured = capsys.readouterr().out
+    assert "coverage=" in captured
+    assert "样本覆盖不足告警" in captured
+
+
+def test_download_command_no_warning_when_coverage_ok(
+    cli_files: dict[str, Path],
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    class _OneBarFetcher:
+        def __init__(self) -> None:
+            self._called = False
+
+        def fetch_ohlcv(self, symbol: str, timeframe: str, since: int | None = None, limit: int | None = None):
+            if self._called:
+                return []
+            self._called = True
+            return [[1_700_100_000_000, 10.0, 11.0, 9.0, 10.5, 20.0]]
+
+    monkeypatch.setattr("src.cli_workflows.MarketDataFetcher.from_config", lambda _config: _OneBarFetcher())
+
+    assert _run_cli(
+        cli_files,
+        "download",
+        "--symbol",
+        "BTC/USDT",
+        "--timeframe",
+        "1m",
+        "--start-ms",
+        "1700100000000",
+        "--end-ms",
+        "1700100000000",
+    ) == 0
+
+    captured = capsys.readouterr().out
+    assert "coverage=" in captured
+    assert "样本覆盖不足告警" not in captured
+
+
 def test_import_export_cleanup_commands(cli_files: dict[str, Path], tmp_path: Path) -> None:
     csv_path = tmp_path / "candles.csv"
     with csv_path.open("w", encoding="utf-8", newline="") as handle:
@@ -271,3 +341,57 @@ def test_live_command_with_mock_loop(cli_files: dict[str, Path], monkeypatch: py
         "--max-iterations",
         "2",
     ) == 0
+
+
+def test_backtest_warns_when_data_coverage_low(
+    cli_files: dict[str, Path],
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    assert _run_cli(cli_files, "start") == 0
+    start_ms, _ = _seed_hourly_candles(cli_files["db"], count=40)
+    extended_end_ms = start_ms + (200 * 3_600_000)
+
+    assert _run_cli(
+        cli_files,
+        "backtest",
+        "--strategy",
+        "sma_strategy",
+        "--symbol",
+        "BTC/USDT",
+        "--timeframe",
+        "1h",
+        "--start-ms",
+        str(start_ms),
+        "--end-ms",
+        str(extended_end_ms),
+    ) == 0
+
+    captured = capsys.readouterr().out
+    assert "样本覆盖告警" in captured
+    assert "coverage=" in captured
+
+
+def test_backtest_no_warning_when_data_coverage_ok(
+    cli_files: dict[str, Path],
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    assert _run_cli(cli_files, "start") == 0
+    start_ms, end_ms = _seed_hourly_candles(cli_files["db"], count=40)
+
+    assert _run_cli(
+        cli_files,
+        "backtest",
+        "--strategy",
+        "sma_strategy",
+        "--symbol",
+        "BTC/USDT",
+        "--timeframe",
+        "1h",
+        "--start-ms",
+        str(start_ms),
+        "--end-ms",
+        str(end_ms),
+    ) == 0
+
+    captured = capsys.readouterr().out
+    assert "样本覆盖告警" not in captured

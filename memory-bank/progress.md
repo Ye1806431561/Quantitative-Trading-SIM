@@ -14,6 +14,7 @@
 
 ## 未解决问题清单
 - 暂无阻塞问题；实施计划第 1-42 步已全部完成并验收通过。
+- 新增后续修复项：15m 长窗口下载样本覆盖率可观测性与主网配置指引（已实现，待用户验收）。
 
 ## 历史归档
 - [2026-02-15](progress_archive/2026-02-15.md)
@@ -25,6 +26,30 @@
 - [2026-02-22](progress_archive/2026-02-22.md)
 
 ## 最近的关键变更
+
+## 2026-02-22（后续修复：主网15m样本窗口）
+
+### 本次目标
+- 修复“`--days 365` 但只下载到约 17.75 天”场景的可解释性问题，并提供主网隔离数据库实践路径。
+
+### 已完成事项
+- 新增主网配置模板：`config/config.mainnet.yaml`（仅 `exchange.testnet=false`，其余保持一致）。
+- 下载结果模型增强（`src/data/storage.py` + 新增 `src/data/candle_window_stats.py`/`src/data/timeframe_metrics.py`/`src/data/storage_types.py`）：
+  - 新增 `stored_count`、`expected_count`、`coverage_ratio`、`first_timestamp`、`last_timestamp`、`span_days`。
+- CLI 下载输出增强（`src/cli_workflows.py`）：
+  - 输出 `downloaded_count/stored_count/expected_count/coverage/span_days`；
+  - 覆盖率 `<90%` 触发黄色告警并提示主网 + 独立数据库方案。
+- CLI 回测前置提示增强（`src/cli_workflows.py`）：
+  - 样本覆盖率 `<90%` 时输出可解释告警，不改变回测主流程与返回码。
+- 文档更新：
+  - `README.md` 新增“主网历史数据下载（隔离数据库）”小节；
+  - `docs/usage-guide.md` 新增覆盖率指标说明与“样本覆盖不足排查”。
+- 测试补充：
+  - `tests/test_storage.py` 增加下载统计字段与边界场景断言；
+  - `tests/test_cli_workflows.py` 增加 download/backtest 覆盖率告警与非告警场景断言。
+- 本地验证结果：
+  - `PYTHONPATH=. ./.venv/bin/pytest -q tests/test_storage.py tests/test_cli_workflows.py` → `23 passed`；
+  - `PYTHONPATH=. ./.venv/bin/pytest -q` → `277 passed`。
 
 ## 2026-02-22（第 42 步）
 

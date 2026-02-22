@@ -71,6 +71,31 @@ python main.py status --disk
 python main.py download --symbol BTC/USDT --timeframe 1h --days 365
 ```
 
+### 2.1）主网历史数据下载（隔离数据库）
+
+当你需要较长窗口（例如 `15m` 的 `365` 天）时，建议使用主网配置并隔离数据库，避免测试网短历史窗口影响回测样本。
+
+```bash
+DATABASE_PATH=data/database/trading_mainnet.db \
+python main.py --config config/config.mainnet.yaml download \
+  --symbol BTC/USDT \
+  --timeframe 15m \
+  --days 365
+```
+
+随后使用同一数据库执行回测：
+
+```bash
+DATABASE_PATH=data/database/trading_mainnet.db \
+python main.py --config config/config.mainnet.yaml backtest \
+  --strategy sma_strategy \
+  --symbol BTC/USDT \
+  --timeframe 15m \
+  --days 365 \
+  --param position_size=0.001 \
+  --output-dir data/reports/mainnet_15m
+```
+
 ### 3）执行一次回测（Backtest）并导出报告
 
 ```bash

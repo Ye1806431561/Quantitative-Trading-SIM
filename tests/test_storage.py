@@ -80,6 +80,12 @@ def test_download_and_store_writes_candles_and_returns_summary(storage) -> None:
     assert result.timeframe == "1h"
     assert result.dataset_name == "BTC_USDT_1h"
     assert result.downloaded_count == 3
+    assert result.stored_count == 3
+    assert result.expected_count == 1
+    assert result.coverage_ratio == pytest.approx(3.0)
+    assert result.first_timestamp == 1000
+    assert result.last_timestamp == 3000
+    assert result.span_days == pytest.approx((3000 - 1000) / 86_400_000)
     assert [call["since"] for call in fetcher.calls] == [1000, 2001]
 
     with database.transaction() as tx:
@@ -117,6 +123,9 @@ def test_download_and_store_uses_cache_on_repeated_identical_request(storage) ->
 
     assert first_result.downloaded_count == 2
     assert second_result.downloaded_count == 0
+    assert second_result.stored_count == 2
+    assert second_result.expected_count == 1
+    assert second_result.coverage_ratio == pytest.approx(2.0)
     assert len(fetcher.calls) == calls_after_first
 
     with database.transaction() as tx:
@@ -164,6 +173,9 @@ def test_download_and_store_deduplicates_overlapping_rows(storage) -> None:
     result = service.download_and_store(second_request)
 
     assert result.downloaded_count == 1
+    assert result.stored_count == 2
+    assert result.expected_count == 1
+    assert result.coverage_ratio == pytest.approx(2.0)
     with database.transaction() as tx:
         count = tx.execute(
             "SELECT COUNT(*) FROM candles WHERE symbol = ? AND timeframe = ?;",
@@ -194,6 +206,9 @@ def test_cache_hit_survives_new_storage_instance(tmp_path) -> None:
     result = second_service.download_and_store(request)
 
     assert result.downloaded_count == 0
+    assert result.stored_count == 2
+    assert result.expected_count == 1
+    assert result.coverage_ratio == pytest.approx(2.0)
     assert second_fetcher.calls == []
 
     database.close()
@@ -225,6 +240,27 @@ def test_query_candles_filters_time_range_and_orders_ascending(storage) -> None:
     assert [candle.timestamp for candle in candles] == [2000, 3000]
     assert all(candle.symbol == "BTC/USDT" for candle in candles)
     assert all(candle.timeframe == "1h" for candle in candles)
+
+
+def test_expected_count_uses_inclusive_boundary(storage) -> None:
+    service, fetcher, _ = storage
+    fetcher.set_pages([[[1000, 100.0, 101.0, 99.0, 100.5, 10.0]]])
+    request = CandleDownloadRequest(
+        symbol="BTC/USDT",
+        timeframe="1m",
+        start_timestamp=1000,
+        end_timestamp=1000,
+    )
+
+    result = service.download_and_store(request)
+
+    assert result.downloaded_count == 1
+    assert result.stored_count == 1
+    assert result.expected_count == 1
+    assert result.coverage_ratio == pytest.approx(1.0)
+    assert result.first_timestamp == 1000
+    assert result.last_timestamp == 1000
+    assert result.span_days == pytest.approx(0.0)
 
 
 def test_download_rejects_invalid_time_range(storage) -> None:

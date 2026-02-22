@@ -22,6 +22,10 @@ from src.cli_context import (
 )
 from src.data.market import MarketDataFetcher
 from src.data.storage import CandleDownloadRequest, HistoricalCandleStorage
+from src.data.timeframe_metrics import (
+    compute_coverage_ratio,
+    estimate_expected_candle_count,
+)
 from src.live.realtime_loop import RealtimeSimulationLoop
 from src.strategies.factory import create_live_strategy
 from src.strategies.registry import StrategyRegistry
@@ -86,6 +90,20 @@ def handle_backtest(ctx: CLIContext, args: Any) -> int:
     table.add_row("sharpe_ratio", str(result.risk_metrics.sharpe_ratio))
     console.print(table)
 
+    expected_bars = estimate_expected_candle_count(start_ms, end_ms, timeframe)
+    backtest_coverage = compute_coverage_ratio(
+        stored_count=result.bars_processed,
+        expected_count=expected_bars,
+    )
+    if expected_bars > 0 and backtest_coverage < 0.90:
+        console.print(
+            "[yellow]样本覆盖告警[/yellow] "
+            f"bars={result.bars_processed}/{expected_bars} "
+            f"coverage={backtest_coverage:.2%} (<90%)。"
+            "建议先补齐历史数据后再回测；若当前使用测试网，"
+            "可改用 --config config/config.mainnet.yaml + 独立 DATABASE_PATH 重新下载。"
+        )
+
     if args.output_dir:
         exporter = BacktestResultExporter(args.output_dir)
         paths = exporter.export_all(result=result, prefix=args.prefix or "")
@@ -138,8 +156,20 @@ def handle_download(ctx: CLIContext, args: Any) -> int:
 
     console.print(
         "[green]下载完成[/green] "
-        f"dataset={result.dataset_name} downloaded_count={result.downloaded_count}"
+        f"dataset={result.dataset_name} "
+        f"downloaded_count={result.downloaded_count} "
+        f"stored_count={result.stored_count} "
+        f"expected_count={result.expected_count} "
+        f"coverage={result.coverage_ratio:.2%} "
+        f"span_days={result.span_days:.2f}"
     )
+    if result.coverage_ratio < 0.90:
+        console.print(
+            "[yellow]样本覆盖不足告警[/yellow] "
+            "当前时间窗历史数据覆盖率低于90%，可能是测试网历史窗口较短。"
+            "建议使用 --config config/config.mainnet.yaml，"
+            "并通过 DATABASE_PATH 指向独立数据库后重新下载。"
+        )
     return 0
 
 

@@ -44,6 +44,40 @@ python main.py download --symbol BTC/USDT --timeframe 1h --days 30
 python main.py download --symbol BTC/USDT --timeframe 1h --start-ms 1704067200000 --end-ms 1706745600000
 ```
 
+`download` 结果会输出：
+- `downloaded_count`：本次实际新增写入行数；
+- `stored_count`：当前请求时间窗内数据库总 bars；
+- `expected_count`：按 timeframe 与时间窗估算的理论 bars；
+- `coverage`：`stored_count / expected_count`；
+- `span_days`：当前时间窗实际覆盖天数。
+
+当 `coverage < 90%` 时会显示“样本覆盖不足告警”。
+
+### 主网长窗口下载（推荐）
+
+若要稳定获取 `15m` 的 `365` 天数据，建议切到主网并隔离数据库：
+
+```bash
+DATABASE_PATH=data/database/trading_mainnet.db \
+python main.py --config config/config.mainnet.yaml download \
+  --symbol BTC/USDT \
+  --timeframe 15m \
+  --days 365
+```
+
+对应回测：
+
+```bash
+DATABASE_PATH=data/database/trading_mainnet.db \
+python main.py --config config/config.mainnet.yaml backtest \
+  --strategy sma_strategy \
+  --symbol BTC/USDT \
+  --timeframe 15m \
+  --days 365 \
+  --param position_size=0.001 \
+  --output-dir data/reports/mainnet_15m
+```
+
 ### `import` / `export`
 
 ```bash
@@ -207,6 +241,12 @@ python main.py positions
 
 - `No candle data found in SQLite ...`
   - 回测前请先执行 `download` 或 `import`。
+
+- `bars_processed` 明显少于预期（例如 15m 365天却只有约1700根）
+  - 先看 `download` 输出中的 `coverage` 与 `span_days`；
+  - 若低于 90%，通常是测试网历史窗口偏短，改用：
+    - `--config config/config.mainnet.yaml`
+    - `DATABASE_PATH=data/database/trading_mainnet.db`
 
 - 实时模拟很快结束
   - 检查 `--max-iterations` 是否设置过小。
